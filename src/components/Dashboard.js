@@ -1,68 +1,117 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Download, Trash2, Edit3, Plus, TrendingUp, AlertCircle, Package } from 'lucide-react';
+import { Upload, Download, Trash2, TrendingUp, AlertCircle, Package } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
 
 export default function Dashboard() {
   const [products, setProducts] = useState([]);
-  const [period, setPeriod] = useState('meses'); // anos, meses, semanas, dias
+  const [period, setPeriod] = useState('meses');
   const [uploading, setUploading] = useState(false);
 
-  // Mock initial data if Supabase isn't connected yet
   useEffect(() => {
     fetchProducts();
   }, []);
 
   const fetchProducts = async () => {
-    // Para fins de demonstração, inicializamos com mock se falhar ou se não houver dados.
-    const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false });
-    if (error || !data || data.length === 0) {
-      setProducts([
-        { id: 1, name: 'Produto A (Exemplo)', cost: 100, margin: 20, is_new: true },
-        { id: 2, name: 'Produto B (Exemplo)', cost: 50, margin: null, is_new: false },
-        { id: 3, name: 'Produto C (Exemplo)', cost: 200, margin: 50, is_new: true },
-      ]);
-    } else {
-      setProducts(data);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error || !data || data.length === 0) {
+        setProducts([
+          { id: 'mock-1', name: 'Produto A (Exemplo)', cost: 100, margin: 8, is_new: false },
+          { id: 'mock-2', name: 'Produto B (Exemplo)', cost: 50, margin: null, is_new: false }
+        ]);
+      } else {
+        setProducts(data);
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
   const handleSetMargin = async (id, marginValue) => {
     const margin = parseFloat(marginValue);
-    if(isNaN(margin)) return;
+    if (isNaN(margin)) return;
     
-    // Atualiza local
     setProducts(products.map(p => p.id === id ? { ...p, margin, is_new: false } : p));
-    // Atualiza banco
-    await supabase.from('products').update({ margin, is_new: false }).eq('id', id);
+    
+    // Atualiza no Supabase se não for dado fictício
+    if (typeof id === 'string' && !id.startsWith('mock-')) {
+      await supabase.from('products').update({ margin, is_new: false }).eq('id', id);
+    }
   };
 
   const handleRemoveMargin = async (id) => {
     setProducts(products.map(p => p.id === id ? { ...p, margin: null } : p));
-    await supabase.from('products').update({ margin: null }).eq('id', id);
+    if (typeof id === 'string' && !id.startsWith('mock-')) {
+      await supabase.from('products').update({ margin: null }).eq('id', id);
+    }
   };
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setUploading(true);
-    
+
     Papa.parse(file, {
       header: true,
+      skipEmptyLines: true,
       complete: async (results) => {
-        const newProducts = results.data.map(row => ({
-          name: row.nome || row.name,
-          cost: parseFloat(row.custo || row.cost || 0),
-          margin: row.margem ? parseFloat(row.margem) : null,
-          is_new: true
-        })).filter(p => p.name);
-        
-        // Inserir no Supabase (descomentar se backend configurado)
-        // const { data } = await supabase.from('products').insert(newProducts).select();
-        
-        // Atualizar estado local para visualização imediata
-        setProducts([...newProducts.map((p, i) => ({...p, id: Date.now()+i})), ...products]);
+        // Leitura flexível de colunas (aceita Produto, Descrição, Nome, Custo, Preço, etc.)
+        const newProducts = results.data.map(row => {
+          const keys = Object.keys(row);
+          const nameKey = keys.find(k => /^(nome|name|produto|descri)/i.test(k.trim()));
+          const costKey = keys.find(k => /^(custo|cost|pre[cç]o|valor|vl)/i.test(k.trim()));
+          const marginKey = keys.find(k => /^(margem|margin)/i.test(k.trim()));
+
+          const name = nameKey ? String(row[nameKey]).trim() : null;
+          
+          let rawCost = costKey ? String(row[costKey]).replace('R$', '').replace(/\s/g, '').replace(',', '.') : '0';
+          const cost = parseFloat(rawCost) || 0;
+          
+          let margin = null;
+          if (marginKey && row[marginKey] !== undefined && row[marginKey] !== '') {
+            const parsedMargin = parseFloat(String(row[marginKey]).replace('%', '').replace(',', '.'));
+            if (!isNaN(parsedMargin)) margin = parsedMargin;
+          }
+
+          return {
+            name,
+            cost,
+            margin,
+            is_new: true
+          };
+        }).filter(p => p.name && p.name.length > 0);
+
+        if (newProducts.length === 0) {
+          alert("Não foram encontrados dados válidos. Certifique-se de que a folha tem uma coluna com o nome do produto ('Nome' ou 'Produto') e outra com o valor ('Custo' ou 'Preço').");
+          setUploading(false);
+          return;
+        }
+
+        // Grava diretamente no Supabase
+        const { data, error } = await supabase.from('products').insert(newProducts).select();
+
+        if (error) {
+          console.error("Erro Supabase:", error);
+          alert("Erro ao gravar no Supabase: " + error.message);
+          // Fallback: visualiza em modo local caso haja pendências no banco
+          setProducts(prev => [...newProducts.map((p, i) => ({ ...p, id: `local-${Date.now()}-${i}` })), ...prev]);
+        } else if (data) {
+          // Remove os exemplos mock se existirem e adiciona os novos do banco
+          setProducts(prev => [...data, ...prev.filter(p => !String(p.id).startsWith('mock-'))]);
+          alert(`${newProducts.length} produto(s) importado(s) com sucesso!`);
+        }
+
+        setUploading(false);
+        e.target.value = '';
+      },
+      error: () => {
+        alert("Erro ao processar o ficheiro CSV.");
         setUploading(false);
       }
     });
@@ -77,7 +126,6 @@ export default function Dashboard() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans text-white">
-      {/* Header */}
       <header className="flex justify-between items-center mb-10 border-b border-gray-800 pb-6 no-print">
         <div>
           <motion.h1 
@@ -93,7 +141,7 @@ export default function Dashboard() {
         <div className="flex gap-4">
           <label className="cursor-pointer bg-surface hover:bg-surfaceHover border border-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-all">
             <Upload size={18} />
-            <span>{uploading ? "Lendo..." : "Upload Relatório"}</span>
+            <span>{uploading ? "A importar..." : "Upload Relatório"}</span>
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
           </label>
           <button onClick={handlePrintPDF} className="bg-primary text-black font-bold px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-yellow-500 transition-all">
@@ -103,7 +151,6 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Estimativa de Período & Filtros */}
       <motion.div 
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
         className="mb-8 flex justify-between items-center bg-surface p-4 rounded-xl border border-gray-800 no-print"
@@ -126,7 +173,6 @@ export default function Dashboard() {
         </div>
       </motion.div>
 
-      {/* Cards de Animação de Caixa */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 no-print">
         <motion.div whileHover={{ scale: 1.02 }} className="bg-surface p-6 rounded-2xl border border-gray-800 shadow-xl">
           <div className="flex items-center justify-between mb-4">
@@ -154,7 +200,6 @@ export default function Dashboard() {
         </motion.div>
       </div>
 
-      {/* Tabela Principal */}
       <motion.div 
         initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }}
         className="bg-surface rounded-2xl border border-gray-800 overflow-hidden shadow-2xl"
@@ -202,9 +247,9 @@ export default function Dashboard() {
                         placeholder="%" 
                         className="w-16 bg-black border border-gray-700 rounded px-2 py-1 text-sm outline-none focus:border-primary"
                         onKeyDown={(e) => {
-                          if(e.key === 'Enter') handleSetMargin(product.id, e.target.value);
+                          if (e.key === 'Enter') handleSetMargin(product.id, e.target.value);
                         }}
-                        onBlur={(e) => { if(e.target.value) handleSetMargin(product.id, e.target.value) }}
+                        onBlur={(e) => { if (e.target.value) handleSetMargin(product.id, e.target.value); }}
                       />
                       <button 
                         onClick={() => handleRemoveMargin(product.id)}
