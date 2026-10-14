@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Download, Trash2, TrendingUp, AlertCircle, Package, Edit3, X, Check } from 'lucide-react';
+import { Upload, Download, Trash2, TrendingUp, AlertCircle, Package, Edit3, X, Check, Search, Filter } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
 
@@ -8,8 +8,10 @@ export default function Dashboard() {
   const [products, setProducts] = useState([]);
   const [period, setPeriod] = useState('meses');
   const [uploading, setUploading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('todas');
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ name: '', cost: '', margin: '' });
+  const [editForm, setEditForm] = useState({ name: '', category: '', cost: '', margin: '' });
 
   useEffect(() => {
     fetchProducts();
@@ -24,8 +26,9 @@ export default function Dashboard() {
 
       if (error || !data || data.length === 0) {
         setProducts([
-          { id: 'demo-1', name: '10438 - PAO DE QUEIJO GRANDE', cost: 2.66, margin: 73.35, is_new: false },
-          { id: 'demo-2', name: '10440 - MINI CHIPA', cost: 0.99, margin: null, is_new: true }
+          { id: 'demo-1', name: '10438 - PAO DE QUEIJO GRANDE', category: 'SALGADOS ASSADOS', cost: 2.66, margin: 73.35, is_new: false },
+          { id: 'demo-2', name: '10440 - MINI CHIPA', category: 'SALGADOS ASSADOS', cost: 0.99, margin: null, is_new: true },
+          { id: 'demo-3', name: '10374 - BALAS DIVERSAS 0,25', category: 'BALAS', cost: 0.14, margin: 44.93, is_new: false }
         ]);
       } else {
         setProducts(data);
@@ -67,6 +70,7 @@ export default function Dashboard() {
     setEditingId(product.id);
     setEditForm({
       name: product.name,
+      category: product.category || 'Geral',
       cost: product.cost,
       margin: product.margin !== null ? product.margin : ''
     });
@@ -82,7 +86,8 @@ export default function Dashboard() {
 
     setProducts(products.map(p => p.id === id ? { 
       ...p, 
-      name: editForm.name, 
+      name: editForm.name,
+      category: editForm.category,
       cost: updatedCost, 
       margin: updatedMargin,
       is_new: false 
@@ -93,6 +98,7 @@ export default function Dashboard() {
     if (typeof id === 'string' && !id.startsWith('demo-') && !id.startsWith('local-')) {
       await supabase.from('products').update({ 
         name: editForm.name, 
+        category: editForm.category,
         cost: updatedCost, 
         margin: updatedMargin,
         is_new: false
@@ -113,24 +119,35 @@ export default function Dashboard() {
         skipEmptyLines: true,
         complete: async (results) => {
           const parsedProducts = [];
+          let currentGroup = 'Geral';
 
-          // 1. Processamento específico para o relatório Xpert (formato do seu CSV)
           results.data.forEach(row => {
             if (!Array.isArray(row) || row.length < 5) return;
 
-            const codeCol = String(row[0] || '').trim();
+            const firstCol = String(row[0] || '').trim();
+
+            // Captura o cabeçalho de Grupo/Categoria do relatório Xpert
+            if (firstCol === 'Grupo:') {
+              for (let i = 4; i < row.length; i++) {
+                const item = String(row[i] || '').trim();
+                if (item && item !== '-' && !/^\d+$/.test(item)) {
+                  currentGroup = item;
+                  break;
+                }
+              }
+            }
+
+            const codeCol = firstCol;
             const nameCol = String(row[3] || '').trim();
 
             // Identifica linhas que possuem código numérico e nome de produto
             if (/^\d+$/.test(codeCol) && nameCol !== '' && !codeCol.includes('Total')) {
-              // Custo Unitário (Coluna 15)
               let cost = 0;
               if (row[15]) {
                 const cleanCost = String(row[15]).replace(/\./g, '').replace(',', '.').trim();
                 cost = parseFloat(cleanCost) || 0;
               }
 
-              // Margem de Lucro (Coluna 24)
               let margin = null;
               if (row[24]) {
                 const cleanMargin = String(row[24]).replace('%', '').replace(/\./g, '').replace(',', '.').trim();
@@ -140,6 +157,7 @@ export default function Dashboard() {
 
               parsedProducts.push({
                 name: `${codeCol} - ${nameCol}`,
+                category: currentGroup,
                 cost: cost,
                 margin: margin,
                 is_new: true
@@ -147,10 +165,11 @@ export default function Dashboard() {
             }
           });
 
-          // 2. Fallback caso seja um CSV padrão (com colunas Nome, Custo, Margem)
+          // Fallback para planilhas convencionais
           if (parsedProducts.length === 0 && results.data.length > 1) {
             const headers = results.data[0].map(h => String(h).toLowerCase().trim());
             const nameIdx = headers.findIndex(h => /nome|produto|descri/i.test(h));
+            const categoryIdx = headers.findIndex(h => /categoria|grupo|tipo/i.test(h));
             const costIdx = headers.findIndex(h => /custo|pre[cç]o|valor/i.test(h));
             const marginIdx = headers.findIndex(h => /margem|margin/i.test(h));
 
@@ -158,24 +177,24 @@ export default function Dashboard() {
               results.data.slice(1).forEach(row => {
                 const name = row[nameIdx];
                 if (!name) return;
+                const category = categoryIdx !== -1 && row[categoryIdx] ? String(row[categoryIdx]).trim() : 'Geral';
                 const cost = costIdx !== -1 ? parseFloat(String(row[costIdx]).replace(',', '.')) || 0 : 0;
                 let margin = null;
                 if (marginIdx !== -1 && row[marginIdx]) {
                   const m = parseFloat(String(row[marginIdx]).replace('%', '').replace(',', '.'));
                   if (!isNaN(m)) margin = m;
                 }
-                parsedProducts.push({ name: String(name).trim(), cost, margin, is_new: true });
+                parsedProducts.push({ name: String(name).trim(), category, cost, margin, is_new: true });
               });
             }
           }
 
           if (parsedProducts.length === 0) {
-            alert("Não foram encontrados dados no relatório. Verifique se o arquivo enviado é o relatório da Xpert ou uma planilha CSV.");
+            alert("Não foram encontrados dados no relatório.");
             setUploading(false);
             return;
           }
 
-          // Gravação no Supabase
           const { data, error } = await supabase.from('products').insert(parsedProducts).select();
 
           if (error) {
@@ -203,7 +222,6 @@ export default function Dashboard() {
       });
     };
 
-    // Lê com codificação ISO-8859-1 para preservar acentos do sistema Xpert
     reader.readAsText(file, "ISO-8859-1");
   };
 
@@ -211,10 +229,21 @@ export default function Dashboard() {
     window.print();
   };
 
+  // Lista dinâmica de categorias existentes nos produtos
+  const categoriesList = ['todas', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
+
+  // Filtro simultâneo por pesquisa de texto e categoria selecionada
+  const filteredProducts = products.filter(p => {
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = p.name.toLowerCase().includes(term) || 
+                          (p.category && p.category.toLowerCase().includes(term));
+    const matchesCategory = selectedCategory === 'todas' || p.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
   const productsWithoutMargin = products.filter(p => p.margin === null || p.margin === undefined);
   const newProducts = products.filter(p => p.is_new);
 
-  // Multiplicador de período para cálculo de lucro
   const getPeriodMultiplier = () => {
     switch (period) {
       case 'dias': return 1;
@@ -225,7 +254,6 @@ export default function Dashboard() {
     }
   };
 
-  // Estimativa de projeção financeira baseada na carteira de produtos
   const estimatedDailyVolumePerItem = 3;
   let estimatedDailyProfit = 0;
 
@@ -240,8 +268,8 @@ export default function Dashboard() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans text-white">
-      {/* Header */}
-      <header className="flex justify-between items-center mb-10 border-b border-gray-800 pb-6 no-print">
+      {/* Header com Pesquisa, Filtro de Categoria e Botões */}
+      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-10 border-b border-gray-800 pb-6 no-print">
         <div>
           <motion.h1 
             initial={{ opacity: 0, y: -20 }}
@@ -250,26 +278,54 @@ export default function Dashboard() {
           >
             SunMaker
           </motion.h1>
-          <p className="text-gray-400 mt-1">Dashboard de Inteligência de Margens</p>
+          <p className="text-gray-400 mt-1 text-sm">Dashboard de Inteligência de Margens</p>
         </div>
         
-        <div className="flex gap-4">
-          <label className="cursor-pointer bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-all">
-            <Upload size={18} />
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          {/* Campo de Pesquisa */}
+          <div className="relative flex-1 sm:w-60">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+            <input 
+              type="text" 
+              placeholder="Pesquisar produto ou código..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-neutral-900 border border-neutral-700 text-white pl-9 pr-3 py-2 rounded-lg text-sm outline-none focus:border-amber-500 transition-colors"
+            />
+          </div>
+
+          {/* Seletor de Categoria */}
+          <div className="relative flex items-center">
+            <Filter className="absolute left-3 text-gray-500 pointer-events-none" size={15} />
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="bg-neutral-900 border border-neutral-700 text-white pl-8 pr-4 py-2 rounded-lg text-sm outline-none focus:border-amber-500 capitalize cursor-pointer max-w-[200px]"
+            >
+              <option value="todas">Todas Categorias</option>
+              {categoriesList.filter(c => c !== 'todas').map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+
+          <label className="cursor-pointer bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium">
+            <Upload size={16} />
             <span>{uploading ? "Importando..." : "Upload Relatório"}</span>
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
           </label>
+
           <button 
             onClick={handlePrintPDF} 
-            className="bg-amber-500 text-black font-bold px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-amber-400 transition-all"
+            className="bg-amber-500 text-black font-bold px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-amber-400 transition-all text-sm"
           >
-            <Download size={18} />
+            <Download size={16} />
             Exportar PDF
           </button>
         </div>
       </header>
 
-      {/* Seletor de Período e Resumo de Lucro */}
+      {/* Estimativa de Período e Resumo de Lucro */}
       <motion.div 
         initial={{ opacity: 0 }} 
         animate={{ opacity: 1 }} 
@@ -277,11 +333,11 @@ export default function Dashboard() {
         className="mb-8 flex justify-between items-center bg-neutral-900 p-5 rounded-2xl border border-neutral-800"
       >
         <div className="flex items-center gap-4 no-print">
-          <span className="text-gray-400">Estimativa de Período:</span>
+          <span className="text-gray-400 text-sm">Estimativa de Período:</span>
           <select 
             value={period} 
             onChange={(e) => setPeriod(e.target.value)}
-            className="bg-black border border-neutral-700 text-white rounded-md px-3 py-1.5 outline-none focus:border-amber-500"
+            className="bg-black border border-neutral-700 text-white rounded-md px-3 py-1.5 text-sm outline-none focus:border-amber-500"
           >
             <option value="dias">Dias</option>
             <option value="semanas">Semanas</option>
@@ -295,28 +351,28 @@ export default function Dashboard() {
         </div>
       </motion.div>
 
-      {/* Cards Animados de Indicadores */}
+      {/* Indicadores Principais */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 no-print">
         <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-6 rounded-2xl border border-neutral-800 shadow-xl">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-400 font-medium">Total de Produtos</h3>
-            <Package className="text-amber-500" size={24} />
+            <h3 className="text-gray-400 font-medium text-sm">Total de Produtos</h3>
+            <Package className="text-amber-500" size={22} />
           </div>
           <p className="text-4xl font-bold">{products.length}</p>
         </motion.div>
         
         <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-6 rounded-2xl border border-red-950/70 shadow-xl">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-red-400 font-medium">Sem Margem Definida</h3>
-            <AlertCircle className="text-red-500" size={24} />
+            <h3 className="text-red-400 font-medium text-sm">Sem Margem Definida</h3>
+            <AlertCircle className="text-red-500" size={22} />
           </div>
           <p className="text-4xl font-bold text-red-500">{productsWithoutMargin.length}</p>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-6 rounded-2xl border border-emerald-950/70 shadow-xl">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-emerald-400 font-medium">Novos Cadastros</h3>
-            <TrendingUp className="text-emerald-500" size={24} />
+            <h3 className="text-emerald-400 font-medium text-sm">Novos Cadastros</h3>
+            <TrendingUp className="text-emerald-500" size={22} />
           </div>
           <p className="text-4xl font-bold text-emerald-500">{newProducts.length}</p>
           <p className="text-xs text-gray-500 mt-2">Aguardando revisão ou margem</p>
@@ -331,138 +387,180 @@ export default function Dashboard() {
         className="bg-neutral-900 rounded-2xl border border-neutral-800 overflow-hidden shadow-2xl"
       >
         <div className="p-6 border-b border-neutral-800 flex justify-between items-center no-print">
-          <h2 className="text-xl font-bold">Listagem de Margens e Preços</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold">Listagem de Margens e Preços</h2>
+            {selectedCategory !== 'todas' && (
+              <span className="text-xs bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-md border border-amber-500/30">
+                Categoria: {selectedCategory}
+              </span>
+            )}
+          </div>
+          {(searchTerm || selectedCategory !== 'todas') && (
+            <span className="text-xs text-gray-400 bg-neutral-800 px-3 py-1 rounded-full border border-neutral-700">
+              Exibindo: {filteredProducts.length} de {products.length}
+            </span>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left print-table">
             <thead className="bg-black/60 border-b border-neutral-800 text-gray-400 text-xs uppercase tracking-wider">
               <tr>
                 <th className="p-4">Produto</th>
+                <th className="p-4">Categoria</th>
                 <th className="p-4">Custo Base</th>
                 <th className="p-4">Margem (%)</th>
-                <th className="p-4">Preço Final Sugerido</th>
+                <th className="p-4">Preço Sugerido</th>
                 <th className="p-4 no-print text-center">Ações</th>
               </tr>
             </thead>
             <tbody>
-              {products.map(product => {
-                const isEditing = editingId === product.id;
+              {filteredProducts.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-gray-500 italic">
+                    Nenhum produto encontrado com os filtros aplicados.
+                  </td>
+                </tr>
+              ) : (
+                filteredProducts.map(product => {
+                  const isEditing = editingId === product.id;
 
-                return (
-                  <tr key={product.id} className={`border-b border-neutral-800/60 hover:bg-white/5 transition-colors ${isEditing ? 'bg-white/5' : ''}`}>
-                    <td className="p-4 font-medium">
-                      {isEditing ? (
-                        <input 
-                          type="text" 
-                          value={editForm.name} 
-                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                          className="w-full bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
-                        />
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span>{product.name}</span>
-                          {product.is_new && (
-                            <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full border border-emerald-500/30 uppercase font-bold tracking-wider">
-                              Novo
-                            </span>
-                          )}
-                          {product.margin === null && (
-                            <span className="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full border border-red-500/30 uppercase font-bold tracking-wider">
-                              Alerta
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                    
-                    <td className="p-4 text-gray-300">
-                      {isEditing ? (
-                        <input 
-                          type="number" 
-                          step="0.01"
-                          value={editForm.cost} 
-                          onChange={(e) => setEditForm({ ...editForm, cost: e.target.value })}
-                          className="w-24 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
-                        />
-                      ) : (
-                        `R$ ${Number(product.cost).toFixed(2)}`
-                      )}
-                    </td>
-                    
-                    <td className="p-4">
-                      {isEditing ? (
-                        <input 
-                          type="number" 
-                          step="0.01"
-                          value={editForm.margin} 
-                          onChange={(e) => setEditForm({ ...editForm, margin: e.target.value })}
-                          placeholder="%"
-                          className="w-20 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
-                        />
-                      ) : (
-                        product.margin !== null ? (
-                          <span className="text-amber-400 font-bold">{product.margin}%</span>
+                  return (
+                    <tr key={product.id} className={`border-b border-neutral-800/60 hover:bg-white/5 transition-colors ${isEditing ? 'bg-white/5' : ''}`}>
+                      {/* Nome do Produto */}
+                      <td className="p-4 font-medium">
+                        {isEditing ? (
+                          <input 
+                            type="text" 
+                            value={editForm.name} 
+                            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                            className="w-full bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
+                          />
                         ) : (
-                          <span className="text-gray-500 italic">Não definida</span>
-                        )
-                      )}
-                    </td>
-                    
-                    <td className="p-4">
-                      {!isEditing && product.margin !== null 
-                        ? <span className="text-emerald-400 font-semibold">R$ {(product.cost * (1 + product.margin / 100)).toFixed(2)}</span>
-                        : <span className="text-gray-600">-</span>
-                      }
-                    </td>
-                    
-                    <td className="p-4 no-print">
-                      {isEditing ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <button onClick={() => saveEditing(product.id)} className="p-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded" title="Confirmar">
-                            <Check size={18} />
-                          </button>
-                          <button onClick={cancelEditing} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded" title="Cancelar">
-                            <X size={18} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center gap-2">
+                          <div className="flex items-center gap-2">
+                            <span>{product.name}</span>
+                            {product.is_new && (
+                              <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full border border-emerald-500/30 uppercase font-bold tracking-wider">
+                                Novo
+                              </span>
+                            )}
+                            {product.margin === null && (
+                              <span className="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full border border-red-500/30 uppercase font-bold tracking-wider">
+                                Alerta
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Categoria */}
+                      <td className="p-4">
+                        {isEditing ? (
+                          <input 
+                            type="text" 
+                            value={editForm.category} 
+                            onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                            className="w-32 bg-black border border-amber-500/70 rounded px-2 py-1 text-sm outline-none"
+                          />
+                        ) : (
+                          <span className="text-xs bg-neutral-800 text-neutral-300 px-2 py-1 rounded border border-neutral-700">
+                            {product.category || 'Geral'}
+                          </span>
+                        )}
+                      </td>
+                      
+                      {/* Custo */}
+                      <td className="p-4 text-gray-300">
+                        {isEditing ? (
                           <input 
                             type="number" 
                             step="0.01"
-                            placeholder="%" 
-                            className="w-16 bg-black border border-neutral-700 rounded px-2 py-1 text-sm outline-none focus:border-amber-500"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSetMargin(product.id, e.target.value);
-                            }}
+                            value={editForm.cost} 
+                            onChange={(e) => setEditForm({ ...editForm, cost: e.target.value })}
+                            className="w-24 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
                           />
-                          <button 
-                            onClick={() => startEditing(product)} 
-                            className="p-1.5 text-gray-400 hover:text-amber-400 hover:bg-amber-400/10 rounded transition-colors" 
-                            title="Editar Dados"
-                          >
-                            <Edit3 size={16} />
-                          </button>
-                          <button 
-                            onClick={() => handleRemoveMargin(product.id)} 
-                            className="p-1.5 text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded transition-colors" 
-                            title="Zerar Margem"
-                          >
-                            <AlertCircle size={16} />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteProduct(product.id)} 
-                            className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors" 
-                            title="Excluir Produto"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                        ) : (
+                          `R$ ${Number(product.cost).toFixed(2)}`
+                        )}
+                      </td>
+                      
+                      {/* Margem */}
+                      <td className="p-4">
+                        {isEditing ? (
+                          <input 
+                            type="number" 
+                            step="0.01"
+                            value={editForm.margin} 
+                            onChange={(e) => setEditForm({ ...editForm, margin: e.target.value })}
+                            placeholder="%"
+                            className="w-20 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
+                          />
+                        ) : (
+                          product.margin !== null ? (
+                            <span className="text-amber-400 font-bold">{product.margin}%</span>
+                          ) : (
+                            <span className="text-gray-500 italic">Não definida</span>
+                          )
+                        )}
+                      </td>
+                      
+                      {/* Preço Sugerido */}
+                      <td className="p-4">
+                        {!isEditing && product.margin !== null 
+                          ? <span className="text-emerald-400 font-semibold">R$ {(product.cost * (1 + product.margin / 100)).toFixed(2)}</span>
+                          : <span className="text-gray-600">-</span>
+                        }
+                      </td>
+                      
+                      {/* Ações */}
+                      <td className="p-4 no-print">
+                        {isEditing ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <button onClick={() => saveEditing(product.id)} className="p-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded" title="Confirmar">
+                              <Check size={18} />
+                            </button>
+                            <button onClick={cancelEditing} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded" title="Cancelar">
+                              <X size={18} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center gap-2">
+                            <input 
+                              type="number" 
+                              step="0.01"
+                              placeholder="%" 
+                              className="w-16 bg-black border border-neutral-700 rounded px-2 py-1 text-sm outline-none focus:border-amber-500"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSetMargin(product.id, e.target.value);
+                              }}
+                            />
+                            <button 
+                              onClick={() => startEditing(product)} 
+                              className="p-1.5 text-gray-400 hover:text-amber-400 hover:bg-amber-400/10 rounded transition-colors" 
+                              title="Editar Dados"
+                            >
+                              <Edit3 size={16} />
+                            </button>
+                            <button 
+                              onClick={() => handleRemoveMargin(product.id)} 
+                              className="p-1.5 text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded transition-colors" 
+                              title="Zerar Margem"
+                            >
+                              <AlertCircle size={16} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteProduct(product.id)} 
+                              className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors" 
+                              title="Excluir Produto"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
