@@ -27,8 +27,7 @@ export default function Dashboard() {
       if (error || !data || data.length === 0) {
         setProducts([
           { id: 'demo-1', name: '10438 - PAO DE QUEIJO GRANDE', category: 'SALGADOS ASSADOS', cost: 2.66, margin: 73.35, is_new: false },
-          { id: 'demo-2', name: '10440 - MINI CHIPA', category: 'SALGADOS ASSADOS', cost: 0.99, margin: null, is_new: true },
-          { id: 'demo-3', name: '10374 - BALAS DIVERSAS 0,25', category: 'BALAS', cost: 0.14, margin: 44.93, is_new: false }
+          { id: 'demo-2', name: '10440 - MINI CHIPA', category: 'SALGADOS ASSADOS', cost: 0.99, margin: null, is_new: true }
         ]);
       } else {
         setProducts(data);
@@ -63,6 +62,26 @@ export default function Dashboard() {
     
     if (typeof id === 'string' && !id.startsWith('demo-') && !id.startsWith('local-')) {
       await supabase.from('products').delete().eq('id', id);
+    }
+  };
+
+  // --- NOVA FUNÇÃO: LIMPAR TODOS OS DADOS ---
+  const handleClearAllData = async () => {
+    const confirm = window.confirm('ATENÇÃO: Tem a certeza absoluta de que deseja APAGAR TODOS os produtos da base de dados? Esta ação não pode ser desfeita.');
+    
+    if (confirm) {
+      // Limpa os dados do ecrã imediatamente
+      setProducts([]);
+
+      // O .neq('id', '0') é usado porque o Supabase exige pelo menos um filtro para comandos de exclusão em massa
+      const { error } = await supabase.from('products').delete().neq('id', '0');
+
+      if (error) {
+        alert("Ocorreu um erro ao tentar limpar o banco de dados: " + error.message);
+        fetchProducts(); // Recarrega se der erro
+      } else {
+        alert("Todos os dados foram excluídos com sucesso!");
+      }
     }
   };
 
@@ -122,41 +141,40 @@ export default function Dashboard() {
           let currentGroup = 'Geral';
 
           results.data.forEach(row => {
-            if (!Array.isArray(row) || row.length < 5) return;
+            if (!Array.isArray(row)) return;
 
-            const firstCol = String(row[0] || '').trim();
+            const clean = row.map(c => String(c || '').trim()).filter(Boolean);
+            if (clean.length === 0) return;
 
-            // Captura o cabeçalho de Grupo/Categoria do relatório Xpert
-            if (firstCol === 'Grupo:') {
-              for (let i = 4; i < row.length; i++) {
-                const item = String(row[i] || '').trim();
-                if (item && item !== '-' && !/^\d+$/.test(item)) {
-                  currentGroup = item;
-                  break;
-                }
+            if (clean.some(item => item.includes('Grupo:')) && !clean.some(item => item.includes('Total'))) {
+              const dashIdx = clean.indexOf('-');
+              if (dashIdx !== -1 && dashIdx + 1 < clean.length) {
+                currentGroup = clean[dashIdx + 1];
               }
             }
 
-            const codeCol = firstCol;
-            const nameCol = String(row[3] || '').trim();
+            if (clean.length >= 3 && /^\d+$/.test(clean[0]) && clean[1] === '-') {
+              const code = clean[0];
+              const name = clean[2];
 
-            // Identifica linhas que possuem código numérico e nome de produto
-            if (/^\d+$/.test(codeCol) && nameCol !== '' && !codeCol.includes('Total')) {
               let cost = 0;
-              if (row[15]) {
-                const cleanCost = String(row[15]).replace(/\./g, '').replace(',', '.').trim();
-                cost = parseFloat(cleanCost) || 0;
+              if (clean.length > 3) {
+                const rawCost = clean[3].replace(/\./g, '').replace(',', '.').trim();
+                cost = parseFloat(rawCost) || 0;
               }
 
               let margin = null;
-              if (row[24]) {
-                const cleanMargin = String(row[24]).replace('%', '').replace(/\./g, '').replace(',', '.').trim();
-                const numMargin = parseFloat(cleanMargin);
-                if (!isNaN(numMargin)) margin = Math.round(numMargin * 100) / 100;
+              for (let i = 3; i < clean.length; i++) {
+                if (clean[i].includes('%')) {
+                  const rawMargin = clean[i].replace('%', '').replace(/\./g, '').replace(',', '.').trim();
+                  const numMargin = parseFloat(rawMargin);
+                  if (!isNaN(numMargin)) margin = Math.round(numMargin * 100) / 100;
+                  break;
+                }
               }
 
               parsedProducts.push({
-                name: `${codeCol} - ${nameCol}`,
+                name: `${code} - ${name}`,
                 category: currentGroup,
                 cost: cost,
                 margin: margin,
@@ -165,7 +183,6 @@ export default function Dashboard() {
             }
           });
 
-          // Fallback para planilhas convencionais
           if (parsedProducts.length === 0 && results.data.length > 1) {
             const headers = results.data[0].map(h => String(h).toLowerCase().trim());
             const nameIdx = headers.findIndex(h => /nome|produto|descri/i.test(h));
@@ -229,10 +246,8 @@ export default function Dashboard() {
     window.print();
   };
 
-  // Lista dinâmica de categorias existentes nos produtos
   const categoriesList = ['todas', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
 
-  // Filtro simultâneo por pesquisa de texto e categoria selecionada
   const filteredProducts = products.filter(p => {
     const term = searchTerm.toLowerCase();
     const matchesSearch = p.name.toLowerCase().includes(term) || 
@@ -311,9 +326,19 @@ export default function Dashboard() {
 
           <label className="cursor-pointer bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium">
             <Upload size={16} />
-            <span>{uploading ? "Importando..." : "Upload Relatório"}</span>
+            <span>{uploading ? "A importar..." : "Upload Relatório"}</span>
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
           </label>
+
+          {/* Botão de Limpar Todos os Dados */}
+          <button 
+            onClick={handleClearAllData} 
+            className="bg-red-950/50 border border-red-900 text-red-500 font-bold px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-red-900 hover:text-white transition-all text-sm"
+            title="Apagar todos os registos do banco de dados"
+          >
+            <Trash2 size={16} />
+            Limpar Tudo
+          </button>
 
           <button 
             onClick={handlePrintPDF} 
@@ -417,7 +442,7 @@ export default function Dashboard() {
               {filteredProducts.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-gray-500 italic">
-                    Nenhum produto encontrado com os filtros aplicados.
+                    Nenhum produto encontrado.
                   </td>
                 </tr>
               ) : (
@@ -426,7 +451,6 @@ export default function Dashboard() {
 
                   return (
                     <tr key={product.id} className={`border-b border-neutral-800/60 hover:bg-white/5 transition-colors ${isEditing ? 'bg-white/5' : ''}`}>
-                      {/* Nome do Produto */}
                       <td className="p-4 font-medium">
                         {isEditing ? (
                           <input 
@@ -452,14 +476,13 @@ export default function Dashboard() {
                         )}
                       </td>
 
-                      {/* Categoria */}
                       <td className="p-4">
                         {isEditing ? (
                           <input 
                             type="text" 
                             value={editForm.category} 
                             onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                            className="w-32 bg-black border border-amber-500/70 rounded px-2 py-1 text-sm outline-none"
+                            className="w-32 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
                           />
                         ) : (
                           <span className="text-xs bg-neutral-800 text-neutral-300 px-2 py-1 rounded border border-neutral-700">
@@ -468,7 +491,6 @@ export default function Dashboard() {
                         )}
                       </td>
                       
-                      {/* Custo */}
                       <td className="p-4 text-gray-300">
                         {isEditing ? (
                           <input 
@@ -483,7 +505,6 @@ export default function Dashboard() {
                         )}
                       </td>
                       
-                      {/* Margem */}
                       <td className="p-4">
                         {isEditing ? (
                           <input 
@@ -503,7 +524,6 @@ export default function Dashboard() {
                         )}
                       </td>
                       
-                      {/* Preço Sugerido */}
                       <td className="p-4">
                         {!isEditing && product.margin !== null 
                           ? <span className="text-emerald-400 font-semibold">R$ {(product.cost * (1 + product.margin / 100)).toFixed(2)}</span>
@@ -511,7 +531,6 @@ export default function Dashboard() {
                         }
                       </td>
                       
-                      {/* Ações */}
                       <td className="p-4 no-print">
                         {isEditing ? (
                           <div className="flex items-center justify-center gap-2">
