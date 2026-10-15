@@ -65,32 +65,31 @@ export default function Dashboard() {
     }
   };
 
-  // --- FUNÇÃO CORRIGIDA DE LIMPEZA (Apaga um a um para evitar bloqueio do Supabase) ---
+  // --- NOVA FUNÇÃO DE LIMPEZA (Instantânea e Segura) ---
   const handleClearAllData = async () => {
     const confirm = window.confirm('ATENÇÃO: Tem a certeza absoluta de que deseja APAGAR TODOS os produtos da base de dados? Esta ação não pode ser desfeita.');
     
     if (confirm) {
-      setUploading(true); // Usa o estado de loading para bloquear a interface
+      setUploading(true);
       
-      const realProductsIds = products
-        .filter(p => typeof p.id === 'string' && !p.id.startsWith('demo-') && !p.id.startsWith('local-'))
-        .map(p => p.id);
-
-      // Limpa no ecrã imediatamente
+      // Limpa os dados do ecrã de imediato
       setProducts([]);
 
       try {
-        // Se houver produtos reais na base de dados, apagamos iterando em lotes pequenos ou um a um
-        if (realProductsIds.length > 0) {
-           for (const id of realProductsIds) {
-             await supabase.from('products').delete().eq('id', id);
-           }
+        // Comando mágico: Apaga todos os registos onde o ID não é nulo (ou seja, apaga tudo de uma vez só)
+        const { error } = await supabase.from('products').delete().not('id', 'is', null);
+
+        if (error) {
+          console.error("Erro ao limpar:", error);
+          alert("Ocorreu um erro ao tentar limpar o banco de dados: " + error.message);
+          fetchProducts(); // Recarrega se der erro
+        } else {
+          alert("Todos os dados foram excluídos com sucesso!");
         }
-        alert("Todos os dados foram excluídos com sucesso!");
       } catch (err) {
-        console.error("Erro ao apagar:", err);
-        alert("Alguns itens podem não ter sido apagados devido a um erro de rede. Recarregue a página.");
-        fetchProducts(); // Volta a carregar o que sobrou se der erro a meio
+        console.error("Erro inesperado:", err);
+        alert("Erro de conexão.");
+        fetchProducts();
       }
       
       setUploading(false);
