@@ -65,23 +65,35 @@ export default function Dashboard() {
     }
   };
 
-  // --- NOVA FUNÇÃO: LIMPAR TODOS OS DADOS ---
+  // --- FUNÇÃO CORRIGIDA DE LIMPEZA (Apaga um a um para evitar bloqueio do Supabase) ---
   const handleClearAllData = async () => {
     const confirm = window.confirm('ATENÇÃO: Tem a certeza absoluta de que deseja APAGAR TODOS os produtos da base de dados? Esta ação não pode ser desfeita.');
     
     if (confirm) {
-      // Limpa os dados do ecrã imediatamente
+      setUploading(true); // Usa o estado de loading para bloquear a interface
+      
+      const realProductsIds = products
+        .filter(p => typeof p.id === 'string' && !p.id.startsWith('demo-') && !p.id.startsWith('local-'))
+        .map(p => p.id);
+
+      // Limpa no ecrã imediatamente
       setProducts([]);
 
-      // O .neq('id', '0') é usado porque o Supabase exige pelo menos um filtro para comandos de exclusão em massa
-      const { error } = await supabase.from('products').delete().neq('id', '0');
-
-      if (error) {
-        alert("Ocorreu um erro ao tentar limpar o banco de dados: " + error.message);
-        fetchProducts(); // Recarrega se der erro
-      } else {
+      try {
+        // Se houver produtos reais na base de dados, apagamos iterando em lotes pequenos ou um a um
+        if (realProductsIds.length > 0) {
+           for (const id of realProductsIds) {
+             await supabase.from('products').delete().eq('id', id);
+           }
+        }
         alert("Todos os dados foram excluídos com sucesso!");
+      } catch (err) {
+        console.error("Erro ao apagar:", err);
+        alert("Alguns itens podem não ter sido apagados devido a um erro de rede. Recarregue a página.");
+        fetchProducts(); // Volta a carregar o que sobrou se der erro a meio
       }
+      
+      setUploading(false);
     }
   };
 
@@ -326,14 +338,15 @@ export default function Dashboard() {
 
           <label className="cursor-pointer bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium">
             <Upload size={16} />
-            <span>{uploading ? "A importar..." : "Upload Relatório"}</span>
-            <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
+            <span>{uploading ? "Aguarde..." : "Upload Relatório"}</span>
+            <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading} />
           </label>
 
           {/* Botão de Limpar Todos os Dados */}
           <button 
             onClick={handleClearAllData} 
-            className="bg-red-950/50 border border-red-900 text-red-500 font-bold px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-red-900 hover:text-white transition-all text-sm"
+            disabled={uploading}
+            className={`border border-red-900 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all text-sm ${uploading ? 'bg-neutral-800 text-neutral-500' : 'bg-red-950/50 text-red-500 hover:bg-red-900 hover:text-white'}`}
             title="Apagar todos os registos do banco de dados"
           >
             <Trash2 size={16} />
