@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Download, Trash2, TrendingUp, AlertCircle, Package, Edit3, X, Check, Search, Filter } from 'lucide-react';
+import { Upload, Download, Trash2, TrendingUp, AlertCircle, Package, Edit3, X, Check, Search, Filter, DollarSign, Boxes } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
 
@@ -11,7 +11,7 @@ export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('todas');
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ name: '', category: '', cost: '', margin: '' });
+  const [editForm, setEditForm] = useState({ name: '', category: '', stock: '', cost: '', margin: '' });
 
   useEffect(() => {
     fetchProducts();
@@ -25,9 +25,8 @@ export default function Dashboard() {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error("Erro ao procurar produtos:", error);
+        console.error("Erro ao buscar produtos:", error);
       } else {
-        // Agora, se estiver vazio, fica vazio. Nada de dados de exemplo!
         setProducts(data || []);
       }
     } catch (err) {
@@ -68,8 +67,6 @@ export default function Dashboard() {
     
     if (confirm) {
       setUploading(true);
-      
-      // Limpa os dados do ecrã de imediato
       setProducts([]);
 
       try {
@@ -97,6 +94,7 @@ export default function Dashboard() {
     setEditForm({
       name: product.name,
       category: product.category || 'Geral',
+      stock: product.stock !== undefined && product.stock !== null ? product.stock : 0,
       cost: product.cost,
       margin: product.margin !== null ? product.margin : ''
     });
@@ -108,12 +106,14 @@ export default function Dashboard() {
 
   const saveEditing = async (id) => {
     const updatedCost = parseFloat(editForm.cost) || 0;
+    const updatedStock = parseFloat(editForm.stock) || 0;
     const updatedMargin = editForm.margin === '' ? null : parseFloat(editForm.margin);
 
     setProducts(products.map(p => p.id === id ? { 
       ...p, 
       name: editForm.name,
       category: editForm.category,
+      stock: updatedStock,
       cost: updatedCost, 
       margin: updatedMargin,
       is_new: false 
@@ -125,6 +125,7 @@ export default function Dashboard() {
       await supabase.from('products').update({ 
         name: editForm.name, 
         category: editForm.category,
+        stock: updatedStock,
         cost: updatedCost, 
         margin: updatedMargin,
         is_new: false
@@ -164,12 +165,21 @@ export default function Dashboard() {
               const code = clean[0];
               const name = clean[2];
 
+              // Custo Unitário (posição 3 dos dados limpos)
               let cost = 0;
               if (clean.length > 3) {
                 const rawCost = clean[3].replace(/\./g, '').replace(',', '.').trim();
                 cost = parseFloat(rawCost) || 0;
               }
 
+              // Quantidade em Estoque (posição 4 dos dados limpos)
+              let stock = 0;
+              if (clean.length > 4) {
+                const rawStock = clean[4].replace(/\./g, '').replace(',', '.').trim();
+                stock = parseFloat(rawStock) || 0;
+              }
+
+              // Margem de Lucro (campo que contém %)
               let margin = null;
               for (let i = 3; i < clean.length; i++) {
                 if (clean[i].includes('%')) {
@@ -183,6 +193,7 @@ export default function Dashboard() {
               parsedProducts.push({
                 name: `${code} - ${name}`,
                 category: currentGroup,
+                stock: stock,
                 cost: cost,
                 margin: margin,
                 is_new: true
@@ -190,10 +201,12 @@ export default function Dashboard() {
             }
           });
 
+          // Fallback para planilhas convencionais
           if (parsedProducts.length === 0 && results.data.length > 1) {
             const headers = results.data[0].map(h => String(h).toLowerCase().trim());
             const nameIdx = headers.findIndex(h => /nome|produto|descri/i.test(h));
             const categoryIdx = headers.findIndex(h => /categoria|grupo|tipo/i.test(h));
+            const stockIdx = headers.findIndex(h => /estoque|saldo|qtd|quant/i.test(h));
             const costIdx = headers.findIndex(h => /custo|pre[cç]o|valor/i.test(h));
             const marginIdx = headers.findIndex(h => /margem|margin/i.test(h));
 
@@ -202,13 +215,14 @@ export default function Dashboard() {
                 const name = row[nameIdx];
                 if (!name) return;
                 const category = categoryIdx !== -1 && row[categoryIdx] ? String(row[categoryIdx]).trim() : 'Geral';
+                const stock = stockIdx !== -1 ? parseFloat(String(row[stockIdx]).replace(',', '.')) || 0 : 0;
                 const cost = costIdx !== -1 ? parseFloat(String(row[costIdx]).replace(',', '.')) || 0 : 0;
                 let margin = null;
                 if (marginIdx !== -1 && row[marginIdx]) {
                   const m = parseFloat(String(row[marginIdx]).replace('%', '').replace(',', '.'));
                   if (!isNaN(m)) margin = m;
                 }
-                parsedProducts.push({ name: String(name).trim(), category, cost, margin, is_new: true });
+                parsedProducts.push({ name: String(name).trim(), category, stock, cost, margin, is_new: true });
               });
             }
           }
@@ -229,10 +243,7 @@ export default function Dashboard() {
               ...prev
             ]);
           } else if (data) {
-            setProducts(prev => [
-              ...data,
-              ...prev
-            ]);
+            setProducts(prev => [...data, ...prev]);
             alert(`${parsedProducts.length} produtos importados com sucesso!`);
           }
 
@@ -266,31 +277,41 @@ export default function Dashboard() {
   const productsWithoutMargin = products.filter(p => p.margin === null || p.margin === undefined);
   const newProducts = products.filter(p => p.is_new);
 
-  const getPeriodMultiplier = () => {
-    switch (period) {
-      case 'dias': return 1;
-      case 'semanas': return 7;
-      case 'meses': return 30;
-      case 'anos': return 365;
-      default: return 30;
-    }
-  };
-
-  const estimatedDailyVolumePerItem = 3;
-  let estimatedDailyProfit = 0;
+  // --- CÁLCULO DO ESTOQUE E PROJEÇÃO REAL ---
+  let totalStockUnits = 0;
+  let totalCostInvested = 0;
+  let totalStockProfit = 0;
+  let totalSalesValue = 0;
 
   products.forEach(p => {
-    if (p.margin !== null && p.cost > 0) {
-      const unitProfit = p.cost * (p.margin / 100);
-      estimatedDailyProfit += unitProfit * estimatedDailyVolumePerItem;
+    const stockQty = Number(p.stock) || 0;
+    const cost = Number(p.cost) || 0;
+    totalStockUnits += stockQty;
+    totalCostInvested += cost * stockQty;
+
+    if (p.margin !== null && p.margin !== undefined) {
+      const unitProfit = cost * (Number(p.margin) / 100);
+      const suggestedPrice = cost + unitProfit;
+      totalStockProfit += unitProfit * stockQty;
+      totalSalesValue += suggestedPrice * stockQty;
     }
   });
 
-  const projectedProfit = estimatedDailyProfit * getPeriodMultiplier();
+  // Estimativa baseada no ciclo médio de giro de 30 dias para estoque de conveniência
+  const getPeriodProfit = () => {
+    switch (period) {
+      case 'dias': return totalStockProfit / 30;
+      case 'semanas': return (totalStockProfit / 30) * 7;
+      case 'meses': return totalStockProfit;
+      case 'anos': return totalStockProfit * 12;
+      default: return totalStockProfit;
+    }
+  };
 
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans text-white">
-      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-10 border-b border-gray-800 pb-6 no-print">
+      {/* Header */}
+      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8 border-b border-gray-800 pb-6 no-print">
         <div>
           <motion.h1 
             initial={{ opacity: 0, y: -20 }}
@@ -299,7 +320,7 @@ export default function Dashboard() {
           >
             SunMaker
           </motion.h1>
-          <p className="text-gray-400 mt-1 text-sm">Dashboard de Inteligência de Margens</p>
+          <p className="text-gray-400 mt-1 text-sm">Dashboard de Inteligência de Margens & Estoque</p>
         </div>
         
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
@@ -338,7 +359,7 @@ export default function Dashboard() {
             onClick={handleClearAllData} 
             disabled={uploading}
             className={`border border-red-900 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all text-sm ${uploading ? 'bg-neutral-800 text-neutral-500' : 'bg-red-950/50 text-red-500 hover:bg-red-900 hover:text-white'}`}
-            title="Apagar todos os registos do banco de dados"
+            title="Apagar todos os registros do banco de dados"
           >
             <Trash2 size={16} />
             Limpar Tudo
@@ -354,58 +375,92 @@ export default function Dashboard() {
         </div>
       </header>
 
+      {/* Banner de Projeção Dinâmica */}
       <motion.div 
         initial={{ opacity: 0 }} 
         animate={{ opacity: 1 }} 
         transition={{ delay: 0.1 }}
-        className="mb-8 flex justify-between items-center bg-neutral-900 p-5 rounded-2xl border border-neutral-800"
+        className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-neutral-900 p-5 rounded-2xl border border-neutral-800"
       >
         <div className="flex items-center gap-4 no-print">
-          <span className="text-gray-400 text-sm">Estimativa de Período:</span>
+          <span className="text-gray-300 font-medium text-sm">Estimativa de Período:</span>
           <select 
             value={period} 
             onChange={(e) => setPeriod(e.target.value)}
-            className="bg-black border border-neutral-700 text-white rounded-md px-3 py-1.5 text-sm outline-none focus:border-amber-500"
+            className="bg-black border border-neutral-700 text-white rounded-md px-3 py-1.5 text-sm outline-none focus:border-amber-500 cursor-pointer"
           >
-            <option value="dias">Dias</option>
-            <option value="semanas">Semanas</option>
-            <option value="meses">Meses</option>
-            <option value="anos">Anos</option>
+            <option value="dias">Dias (Giro Diário)</option>
+            <option value="semanas">Semanas (Giro Semanal)</option>
+            <option value="meses">Meses (Giro Mensal do Lote)</option>
+            <option value="anos">Anos (Projeção Anual)</option>
           </select>
         </div>
-        <div className="text-right">
-          <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold no-print">Projeção Estimada ({period}):</p>
-          <p className="text-2xl font-black text-emerald-400">R$ {projectedProfit.toFixed(2)}</p>
+        <div className="text-left md:text-right">
+          <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold no-print">
+            Projeção Estimada de Lucro ({period}):
+          </p>
+          <p className="text-2xl font-black text-emerald-400">
+            R$ {getPeriodProfit().toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <span className="text-[11px] text-gray-500">Calculado sobre a rotatividade do estoque cadastrado</span>
         </div>
       </motion.div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 no-print">
-        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-6 rounded-2xl border border-neutral-800 shadow-xl">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-400 font-medium text-sm">Total de Produtos</h3>
-            <Package className="text-amber-500" size={22} />
+      {/* Cards de Indicadores do Estoque */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8 no-print">
+        {/* Total de Produtos e Unidades */}
+        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 shadow-xl">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-gray-400 font-medium text-xs uppercase tracking-wider">Produtos / Itens</h3>
+            <Package className="text-amber-500" size={20} />
           </div>
-          <p className="text-4xl font-bold">{products.length}</p>
+          <p className="text-3xl font-bold">{products.length}</p>
+          <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+            <Boxes size={14} className="text-neutral-500" />
+            <span className="text-amber-400 font-semibold">{totalStockUnits.toLocaleString('pt-BR')}</span> unidades em loja
+          </p>
         </motion.div>
         
-        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-6 rounded-2xl border border-red-950/70 shadow-xl">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-red-400 font-medium text-sm">Sem Margem Definida</h3>
-            <AlertCircle className="text-red-500" size={22} />
+        {/* Capital Investido no Estoque */}
+        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 shadow-xl">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-gray-400 font-medium text-xs uppercase tracking-wider">Capital Investido</h3>
+            <DollarSign className="text-blue-400" size={20} />
           </div>
-          <p className="text-4xl font-bold text-red-500">{productsWithoutMargin.length}</p>
+          <p className="text-2xl font-bold text-gray-100">
+            R$ {totalCostInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">Custo total das mercadorias</p>
         </motion.div>
 
-        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-6 rounded-2xl border border-emerald-950/70 shadow-xl">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-emerald-400 font-medium text-sm">Novos Cadastros</h3>
-            <TrendingUp className="text-emerald-500" size={22} />
+        {/* Lucro Bruto Retido no Estoque */}
+        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-emerald-950/70 shadow-xl">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-emerald-400 font-medium text-xs uppercase tracking-wider">Lucro em Estoque</h3>
+            <TrendingUp className="text-emerald-400" size={20} />
           </div>
-          <p className="text-4xl font-bold text-emerald-500">{newProducts.length}</p>
-          <p className="text-xs text-gray-500 mt-2">Aguardando revisão ou margem</p>
+          <p className="text-2xl font-bold text-emerald-400">
+            R$ {totalStockProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Venda total: <strong className="text-gray-300">R$ {totalSalesValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+          </p>
+        </motion.div>
+
+        {/* Sem Margem Definida */}
+        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-red-950/70 shadow-xl">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-red-400 font-medium text-xs uppercase tracking-wider">Sem Margem</h3>
+            <AlertCircle className="text-red-500" size={20} />
+          </div>
+          <p className="text-3xl font-bold text-red-500">{productsWithoutMargin.length}</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {newProducts.length > 0 ? `${newProducts.length} novos aguardando revisão` : 'Todos revisados'}
+          </p>
         </motion.div>
       </div>
 
+      {/* Tabela de Produtos */}
       <motion.div 
         initial={{ y: 20, opacity: 0 }} 
         animate={{ y: 0, opacity: 1 }} 
@@ -414,7 +469,7 @@ export default function Dashboard() {
       >
         <div className="p-6 border-b border-neutral-800 flex justify-between items-center no-print">
           <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold">Listagem de Margens e Preços</h2>
+            <h2 className="text-xl font-bold">Listagem de Margens e Estoque</h2>
             {selectedCategory !== 'todas' && (
               <span className="text-xs bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-md border border-amber-500/30">
                 Categoria: {selectedCategory}
@@ -433,25 +488,32 @@ export default function Dashboard() {
               <tr>
                 <th className="p-4">Produto</th>
                 <th className="p-4">Categoria</th>
+                <th className="p-4 text-center">Estoque</th>
                 <th className="p-4">Custo Base</th>
                 <th className="p-4">Margem (%)</th>
                 <th className="p-4">Preço Sugerido</th>
+                <th className="p-4 text-emerald-400">Lucro do Lote</th>
                 <th className="p-4 no-print text-center">Ações</th>
               </tr>
             </thead>
             <tbody>
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-gray-500 italic">
-                    Nenhum produto encontrado.
+                  <td colSpan={8} className="p-8 text-center text-gray-500 italic">
+                    Nenhum produto cadastrado. Faça o upload do relatório CSV.
                   </td>
                 </tr>
               ) : (
                 filteredProducts.map(product => {
                   const isEditing = editingId === product.id;
+                  const stockQty = Number(product.stock) || 0;
+                  const cost = Number(product.cost) || 0;
+                  const unitProfit = product.margin !== null ? cost * (Number(product.margin) / 100) : 0;
+                  const lotProfit = unitProfit * stockQty;
 
                   return (
                     <tr key={product.id} className={`border-b border-neutral-800/60 hover:bg-white/5 transition-colors ${isEditing ? 'bg-white/5' : ''}`}>
+                      {/* Nome */}
                       <td className="p-4 font-medium">
                         {isEditing ? (
                           <input 
@@ -477,13 +539,14 @@ export default function Dashboard() {
                         )}
                       </td>
 
+                      {/* Categoria */}
                       <td className="p-4">
                         {isEditing ? (
                           <input 
                             type="text" 
                             value={editForm.category} 
                             onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                            className="w-32 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
+                            className="w-28 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
                           />
                         ) : (
                           <span className="text-xs bg-neutral-800 text-neutral-300 px-2 py-1 rounded border border-neutral-700">
@@ -491,8 +554,26 @@ export default function Dashboard() {
                           </span>
                         )}
                       </td>
+
+                      {/* Estoque */}
+                      <td className="p-4 text-center">
+                        {isEditing ? (
+                          <input 
+                            type="number" 
+                            step="1"
+                            value={editForm.stock} 
+                            onChange={(e) => setEditForm({ ...editForm, stock: e.target.value })}
+                            className="w-20 bg-black border border-amber-500/70 rounded px-2 py-1 text-sm text-center outline-none"
+                          />
+                        ) : (
+                          <span className="font-mono text-sm text-gray-200">
+                            {stockQty.toLocaleString('pt-BR')} un
+                          </span>
+                        )}
+                      </td>
                       
-                      <td className="p-4 text-gray-300">
+                      {/* Custo */}
+                      <td className="p-4 text-gray-300 font-mono text-sm">
                         {isEditing ? (
                           <input 
                             type="number" 
@@ -502,10 +583,11 @@ export default function Dashboard() {
                             className="w-24 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
                           />
                         ) : (
-                          `R$ ${Number(product.cost).toFixed(2)}`
+                          `R$ ${cost.toFixed(2)}`
                         )}
                       </td>
                       
+                      {/* Margem */}
                       <td className="p-4">
                         {isEditing ? (
                           <input 
@@ -525,13 +607,23 @@ export default function Dashboard() {
                         )}
                       </td>
                       
-                      <td className="p-4">
+                      {/* Preço Sugerido */}
+                      <td className="p-4 font-mono text-sm">
                         {!isEditing && product.margin !== null 
-                          ? <span className="text-emerald-400 font-semibold">R$ {(product.cost * (1 + product.margin / 100)).toFixed(2)}</span>
+                          ? <span className="text-gray-200">R$ {(cost + unitProfit).toFixed(2)}</span>
+                          : <span className="text-gray-600">-</span>
+                        }
+                      </td>
+
+                      {/* Lucro do Lote */}
+                      <td className="p-4 font-mono text-sm font-semibold">
+                        {!isEditing && product.margin !== null 
+                          ? <span className="text-emerald-400">R$ {lotProfit.toFixed(2)}</span>
                           : <span className="text-gray-600">-</span>
                         }
                       </td>
                       
+                      {/* Ações */}
                       <td className="p-4 no-print">
                         {isEditing ? (
                           <div className="flex items-center justify-center gap-2">
