@@ -165,27 +165,25 @@ export default function Dashboard() {
               const code = clean[0];
               const name = clean[2];
 
-              // Custo Unitário (posição 3 dos dados limpos)
               let cost = 0;
               if (clean.length > 3) {
                 const rawCost = clean[3].replace(/\./g, '').replace(',', '.').trim();
                 cost = parseFloat(rawCost) || 0;
               }
 
-              // Quantidade em Estoque (posição 4 dos dados limpos)
               let stock = 0;
               if (clean.length > 4) {
                 const rawStock = clean[4].replace(/\./g, '').replace(',', '.').trim();
                 stock = parseFloat(rawStock) || 0;
               }
 
-              // Margem de Lucro (campo que contém %)
               let margin = null;
               for (let i = 3; i < clean.length; i++) {
                 if (clean[i].includes('%')) {
                   const rawMargin = clean[i].replace('%', '').replace(/\./g, '').replace(',', '.').trim();
                   const numMargin = parseFloat(rawMargin);
-                  if (!isNaN(numMargin)) margin = Math.round(numMargin * 100) / 100;
+                  // Guardamos o número exato, sem arredondar
+                  if (!isNaN(numMargin)) margin = numMargin;
                   break;
                 }
               }
@@ -201,7 +199,6 @@ export default function Dashboard() {
             }
           });
 
-          // Fallback para planilhas convencionais
           if (parsedProducts.length === 0 && results.data.length > 1) {
             const headers = results.data[0].map(h => String(h).toLowerCase().trim());
             const nameIdx = headers.findIndex(h => /nome|produto|descri/i.test(h));
@@ -277,7 +274,7 @@ export default function Dashboard() {
   const productsWithoutMargin = products.filter(p => p.margin === null || p.margin === undefined);
   const newProducts = products.filter(p => p.is_new);
 
-  // --- CÁLCULO DO ESTOQUE E PROJEÇÃO REAL ---
+  // --- CÁLCULO DO ESTOQUE E PROJEÇÃO COM MARGEM SOBRE A VENDA ---
   let totalStockUnits = 0;
   let totalCostInvested = 0;
   let totalStockProfit = 0;
@@ -290,14 +287,25 @@ export default function Dashboard() {
     totalCostInvested += cost * stockQty;
 
     if (p.margin !== null && p.margin !== undefined) {
-      const unitProfit = cost * (Number(p.margin) / 100);
-      const suggestedPrice = cost + unitProfit;
+      const marginVal = Number(p.margin);
+      let suggestedPrice = 0;
+      let unitProfit = 0;
+
+      // Fórmula correta de Margem de Lucro sobre a Venda
+      if (marginVal < 100) {
+        suggestedPrice = cost / (1 - (marginVal / 100));
+      } else {
+        // Se a margem for >= 100, assume-se que é Markup para evitar erros de divisão por zero
+        suggestedPrice = cost + (cost * (marginVal / 100));
+      }
+      
+      unitProfit = suggestedPrice - cost;
+      
       totalStockProfit += unitProfit * stockQty;
       totalSalesValue += suggestedPrice * stockQty;
     }
   });
 
-  // Estimativa baseada no ciclo médio de giro de 30 dias para estoque de conveniência
   const getPeriodProfit = () => {
     switch (period) {
       case 'dias': return totalStockProfit / 30;
@@ -310,7 +318,6 @@ export default function Dashboard() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans text-white">
-      {/* Header */}
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8 border-b border-gray-800 pb-6 no-print">
         <div>
           <motion.h1 
@@ -375,7 +382,6 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Banner de Projeção Dinâmica */}
       <motion.div 
         initial={{ opacity: 0 }} 
         animate={{ opacity: 1 }} 
@@ -406,9 +412,7 @@ export default function Dashboard() {
         </div>
       </motion.div>
 
-      {/* Cards de Indicadores do Estoque */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8 no-print">
-        {/* Total de Produtos e Unidades */}
         <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 shadow-xl">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-gray-400 font-medium text-xs uppercase tracking-wider">Produtos / Itens</h3>
@@ -421,7 +425,6 @@ export default function Dashboard() {
           </p>
         </motion.div>
         
-        {/* Capital Investido no Estoque */}
         <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 shadow-xl">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-gray-400 font-medium text-xs uppercase tracking-wider">Capital Investido</h3>
@@ -433,7 +436,6 @@ export default function Dashboard() {
           <p className="text-xs text-gray-500 mt-1">Custo total das mercadorias</p>
         </motion.div>
 
-        {/* Lucro Bruto Retido no Estoque */}
         <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-emerald-950/70 shadow-xl">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-emerald-400 font-medium text-xs uppercase tracking-wider">Lucro em Estoque</h3>
@@ -447,7 +449,6 @@ export default function Dashboard() {
           </p>
         </motion.div>
 
-        {/* Sem Margem Definida */}
         <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-red-950/70 shadow-xl">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-red-400 font-medium text-xs uppercase tracking-wider">Sem Margem</h3>
@@ -460,7 +461,6 @@ export default function Dashboard() {
         </motion.div>
       </div>
 
-      {/* Tabela de Produtos */}
       <motion.div 
         initial={{ y: 20, opacity: 0 }} 
         animate={{ y: 0, opacity: 1 }} 
@@ -508,12 +508,24 @@ export default function Dashboard() {
                   const isEditing = editingId === product.id;
                   const stockQty = Number(product.stock) || 0;
                   const cost = Number(product.cost) || 0;
-                  const unitProfit = product.margin !== null ? cost * (Number(product.margin) / 100) : 0;
+                  const marginVal = product.margin !== null ? Number(product.margin) : null;
+                  
+                  let suggestedPrice = 0;
+                  let unitProfit = 0;
+
+                  if (marginVal !== null) {
+                    if (marginVal < 100) {
+                      suggestedPrice = cost / (1 - (marginVal / 100));
+                    } else {
+                      suggestedPrice = cost + (cost * (marginVal / 100));
+                    }
+                    unitProfit = suggestedPrice - cost;
+                  }
+                  
                   const lotProfit = unitProfit * stockQty;
 
                   return (
                     <tr key={product.id} className={`border-b border-neutral-800/60 hover:bg-white/5 transition-colors ${isEditing ? 'bg-white/5' : ''}`}>
-                      {/* Nome */}
                       <td className="p-4 font-medium">
                         {isEditing ? (
                           <input 
@@ -539,7 +551,6 @@ export default function Dashboard() {
                         )}
                       </td>
 
-                      {/* Categoria */}
                       <td className="p-4">
                         {isEditing ? (
                           <input 
@@ -555,7 +566,6 @@ export default function Dashboard() {
                         )}
                       </td>
 
-                      {/* Estoque */}
                       <td className="p-4 text-center">
                         {isEditing ? (
                           <input 
@@ -572,7 +582,6 @@ export default function Dashboard() {
                         )}
                       </td>
                       
-                      {/* Custo */}
                       <td className="p-4 text-gray-300 font-mono text-sm">
                         {isEditing ? (
                           <input 
@@ -587,12 +596,11 @@ export default function Dashboard() {
                         )}
                       </td>
                       
-                      {/* Margem */}
                       <td className="p-4">
                         {isEditing ? (
                           <input 
                             type="number" 
-                            step="0.01"
+                            step="0.001"
                             value={editForm.margin} 
                             onChange={(e) => setEditForm({ ...editForm, margin: e.target.value })}
                             placeholder="%"
@@ -607,15 +615,13 @@ export default function Dashboard() {
                         )}
                       </td>
                       
-                      {/* Preço Sugerido */}
                       <td className="p-4 font-mono text-sm">
                         {!isEditing && product.margin !== null 
-                          ? <span className="text-gray-200">R$ {(cost + unitProfit).toFixed(2)}</span>
+                          ? <span className="text-gray-200">R$ {suggestedPrice.toFixed(2)}</span>
                           : <span className="text-gray-600">-</span>
                         }
                       </td>
 
-                      {/* Lucro do Lote */}
                       <td className="p-4 font-mono text-sm font-semibold">
                         {!isEditing && product.margin !== null 
                           ? <span className="text-emerald-400">R$ {lotProfit.toFixed(2)}</span>
@@ -623,7 +629,6 @@ export default function Dashboard() {
                         }
                       </td>
                       
-                      {/* Ações */}
                       <td className="p-4 no-print">
                         {isEditing ? (
                           <div className="flex items-center justify-center gap-2">
