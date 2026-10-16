@@ -24,13 +24,11 @@ export default function Dashboard() {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error || !data || data.length === 0) {
-        setProducts([
-          { id: 'demo-1', name: '10438 - PAO DE QUEIJO GRANDE', category: 'SALGADOS ASSADOS', cost: 2.66, margin: 73.35, is_new: false },
-          { id: 'demo-2', name: '10440 - MINI CHIPA', category: 'SALGADOS ASSADOS', cost: 0.99, margin: null, is_new: true }
-        ]);
+      if (error) {
+        console.error("Erro ao procurar produtos:", error);
       } else {
-        setProducts(data);
+        // Agora, se estiver vazio, fica vazio. Nada de dados de exemplo!
+        setProducts(data || []);
       }
     } catch (err) {
       console.error(err);
@@ -43,14 +41,14 @@ export default function Dashboard() {
     
     setProducts(products.map(p => p.id === id ? { ...p, margin, is_new: false } : p));
     
-    if (typeof id === 'string' && !id.startsWith('demo-') && !id.startsWith('local-')) {
+    if (typeof id === 'string' && !id.startsWith('local-')) {
       await supabase.from('products').update({ margin, is_new: false }).eq('id', id);
     }
   };
 
   const handleRemoveMargin = async (id) => {
     setProducts(products.map(p => p.id === id ? { ...p, margin: null } : p));
-    if (typeof id === 'string' && !id.startsWith('demo-') && !id.startsWith('local-')) {
+    if (typeof id === 'string' && !id.startsWith('local-')) {
       await supabase.from('products').update({ margin: null }).eq('id', id);
     }
   };
@@ -60,12 +58,11 @@ export default function Dashboard() {
     
     setProducts(products.filter(p => p.id !== id));
     
-    if (typeof id === 'string' && !id.startsWith('demo-') && !id.startsWith('local-')) {
+    if (typeof id === 'string' && !id.startsWith('local-')) {
       await supabase.from('products').delete().eq('id', id);
     }
   };
 
-  // --- NOVA FUNÇÃO DE LIMPEZA (Instantânea e Segura) ---
   const handleClearAllData = async () => {
     const confirm = window.confirm('ATENÇÃO: Tem a certeza absoluta de que deseja APAGAR TODOS os produtos da base de dados? Esta ação não pode ser desfeita.');
     
@@ -76,13 +73,12 @@ export default function Dashboard() {
       setProducts([]);
 
       try {
-        // Comando mágico: Apaga todos os registos onde o ID não é nulo (ou seja, apaga tudo de uma vez só)
         const { error } = await supabase.from('products').delete().not('id', 'is', null);
 
         if (error) {
           console.error("Erro ao limpar:", error);
           alert("Ocorreu um erro ao tentar limpar o banco de dados: " + error.message);
-          fetchProducts(); // Recarrega se der erro
+          fetchProducts(); 
         } else {
           alert("Todos os dados foram excluídos com sucesso!");
         }
@@ -125,7 +121,7 @@ export default function Dashboard() {
 
     setEditingId(null);
 
-    if (typeof id === 'string' && !id.startsWith('demo-') && !id.startsWith('local-')) {
+    if (typeof id === 'string' && !id.startsWith('local-')) {
       await supabase.from('products').update({ 
         name: editForm.name, 
         category: editForm.category,
@@ -235,7 +231,7 @@ export default function Dashboard() {
           } else if (data) {
             setProducts(prev => [
               ...data,
-              ...prev.filter(p => !String(p.id).startsWith('demo-'))
+              ...prev
             ]);
             alert(`${parsedProducts.length} produtos importados com sucesso!`);
           }
@@ -294,7 +290,6 @@ export default function Dashboard() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans text-white">
-      {/* Header com Pesquisa, Filtro de Categoria e Botões */}
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-10 border-b border-gray-800 pb-6 no-print">
         <div>
           <motion.h1 
@@ -308,7 +303,6 @@ export default function Dashboard() {
         </div>
         
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-          {/* Campo de Pesquisa */}
           <div className="relative flex-1 sm:w-60">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
             <input 
@@ -320,7 +314,6 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* Seletor de Categoria */}
           <div className="relative flex items-center">
             <Filter className="absolute left-3 text-gray-500 pointer-events-none" size={15} />
             <select
@@ -341,7 +334,6 @@ export default function Dashboard() {
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading} />
           </label>
 
-          {/* Botão de Limpar Todos os Dados */}
           <button 
             onClick={handleClearAllData} 
             disabled={uploading}
@@ -362,7 +354,6 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Estimativa de Período e Resumo de Lucro */}
       <motion.div 
         initial={{ opacity: 0 }} 
         animate={{ opacity: 1 }} 
@@ -388,7 +379,6 @@ export default function Dashboard() {
         </div>
       </motion.div>
 
-      {/* Indicadores Principais */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 no-print">
         <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-6 rounded-2xl border border-neutral-800 shadow-xl">
           <div className="flex items-center justify-between mb-4">
@@ -416,7 +406,6 @@ export default function Dashboard() {
         </motion.div>
       </div>
 
-      {/* Tabela de Produtos */}
       <motion.div 
         initial={{ y: 20, opacity: 0 }} 
         animate={{ y: 0, opacity: 1 }} 
