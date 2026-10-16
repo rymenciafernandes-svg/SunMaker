@@ -8,12 +8,12 @@ export default function Dashboard() {
   const [products, setProducts] = useState([]);
   const [period, setPeriod] = useState('meses');
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('todas');
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', category: '', stock: '', cost: '', margin: '' });
   
-  // Estado para saber qual o formato matemático usado no relatório
   const [calculationMode, setCalculationMode] = useState('markup');
 
   useEffect(() => {
@@ -68,6 +68,7 @@ export default function Dashboard() {
     
     if (confirm) {
       setUploading(true);
+      setUploadProgress('A limpar banco de dados...');
       setProducts([]);
 
       try {
@@ -77,13 +78,14 @@ export default function Dashboard() {
           alert("Erro: " + error.message);
           fetchProducts(); 
         } else {
-          alert("Limpeza concluída.");
+          alert("Limpeza concluída com sucesso!");
         }
       } catch (err) {
         fetchProducts();
       }
       
       setUploading(false);
+      setUploadProgress('');
     }
   };
 
@@ -135,6 +137,7 @@ export default function Dashboard() {
     const file = e.target.files[0];
     if (!file) return;
     setUploading(true);
+    setUploadProgress('A ler ficheiro...');
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -146,8 +149,7 @@ export default function Dashboard() {
           const parsedProducts = [];
           let currentGroup = 'Geral';
           
-          // DETEÇÃO INTELIGENTE DO SISTEMA XPERT (Markup vs Margem sobre a Venda)
-          let detectedMode = 'markup'; // por defeito Markup
+          let detectedMode = 'markup'; 
           const headerRows = results.data.slice(0, 6);
           const headerText = headerRows.map(r => r.join(' ')).join(' ').toLowerCase();
           
@@ -211,24 +213,44 @@ export default function Dashboard() {
           if (parsedProducts.length === 0) {
             alert("Não foram encontrados dados no relatório.");
             setUploading(false);
+            setUploadProgress('');
             return;
           }
 
-          const { data, error } = await supabase.from('products').insert(parsedProducts).select();
+          // --- SISTEMA DE LOTES (BATCHING) PARA RELATÓRIOS GIGANTES ---
+          const batchSize = 500;
+          let successCount = 0;
+          let hasError = false;
 
-          if (error) {
-            alert("Erro ao gravar no banco: " + error.message);
-          } else if (data) {
-            setProducts(prev => [...data, ...prev]);
-            alert(`${parsedProducts.length} produtos importados (${detectedMode === 'markup' ? 'Modo Markup' : 'Modo Margem'}).`);
+          for (let i = 0; i < parsedProducts.length; i += batchSize) {
+            const batch = parsedProducts.slice(i, i + batchSize);
+            setUploadProgress(`A gravar ${i + batch.length} de ${parsedProducts.length}...`);
+            
+            const { error } = await supabase.from('products').insert(batch);
+            
+            if (error) {
+              console.error("Erro no lote", i, error);
+              alert("Erro ao gravar lote de dados: " + error.message);
+              hasError = true;
+              break;
+            }
+            successCount += batch.length;
           }
 
+          if (!hasError) {
+             alert(`${successCount} produtos importados (${detectedMode === 'markup' ? 'Modo Markup' : 'Modo Margem'}).`);
+          }
+          
+          // Atualiza a tabela com tudo o que foi importado com sucesso
+          fetchProducts();
           setUploading(false);
+          setUploadProgress('');
           e.target.value = '';
         },
         error: () => {
           alert("Erro ao ler CSV.");
           setUploading(false);
+          setUploadProgress('');
         }
       });
     };
@@ -269,7 +291,6 @@ export default function Dashboard() {
       let suggestedPrice = 0;
       let unitProfit = 0;
 
-      // CÁLCULO INTELIGENTE BASEADO NO MODO DO SEU XPERT
       if (calculationMode === 'markup') {
         suggestedPrice = cost + (cost * (marginVal / 100));
       } else {
@@ -344,7 +365,7 @@ export default function Dashboard() {
 
           <label className="cursor-pointer bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium">
             <Upload size={16} />
-            <span>{uploading ? "Aguarde..." : "Upload Relatório"}</span>
+            <span>{uploading ? uploadProgress : "Upload Relatório"}</span>
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading} />
           </label>
 
@@ -611,7 +632,7 @@ export default function Dashboard() {
 
                       <td className="p-4 font-mono text-sm font-semibold">
                         {!isEditing && marginVal > 0
-                          ? <span className="text-emerald-400">R$ {lotProfit.toFixed(2)}</span>
+                          ? <span className="text-emerald-400">R$ {lotProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           : <span className="text-gray-600">-</span>
                         }
                       </td>
