@@ -12,6 +12,9 @@ export default function Dashboard() {
   const [selectedCategory, setSelectedCategory] = useState('todas');
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', category: '', stock: '', cost: '', margin: '' });
+  
+  // Estado para saber qual o formato matemático usado no relatório
+  const [calculationMode, setCalculationMode] = useState('markup');
 
   useEffect(() => {
     fetchProducts();
@@ -24,10 +27,8 @@ export default function Dashboard() {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error("Erro ao buscar produtos:", error);
-      } else {
-        setProducts(data || []);
+      if (!error && data) {
+        setProducts(data);
       }
     } catch (err) {
       console.error(err);
@@ -63,7 +64,7 @@ export default function Dashboard() {
   };
 
   const handleClearAllData = async () => {
-    const confirm = window.confirm('ATENÇÃO: Tem a certeza absoluta de que deseja APAGAR TODOS os produtos da base de dados? Esta ação não pode ser desfeita.');
+    const confirm = window.confirm('ATENÇÃO: Tem a certeza absoluta de que deseja APAGAR TODOS os produtos da base de dados?');
     
     if (confirm) {
       setUploading(true);
@@ -73,15 +74,12 @@ export default function Dashboard() {
         const { error } = await supabase.from('products').delete().not('id', 'is', null);
 
         if (error) {
-          console.error("Erro ao limpar:", error);
-          alert("Ocorreu um erro ao tentar limpar o banco de dados: " + error.message);
+          alert("Erro: " + error.message);
           fetchProducts(); 
         } else {
-          alert("Todos os dados foram excluídos com sucesso!");
+          alert("Limpeza concluída.");
         }
       } catch (err) {
-        console.error("Erro inesperado:", err);
-        alert("Erro de conexão.");
         fetchProducts();
       }
       
@@ -147,6 +145,18 @@ export default function Dashboard() {
         complete: async (results) => {
           const parsedProducts = [];
           let currentGroup = 'Geral';
+          
+          // DETEÇÃO INTELIGENTE DO SISTEMA XPERT (Markup vs Margem sobre a Venda)
+          let detectedMode = 'markup'; // por defeito Markup
+          const headerRows = results.data.slice(0, 6);
+          const headerText = headerRows.map(r => r.join(' ')).join(' ').toLowerCase();
+          
+          if (headerText.includes('margem mark up') || headerText.includes('markup')) {
+             detectedMode = 'markup';
+          } else if (headerText.includes('margem de lucro') && !headerText.includes('mark up')) {
+             detectedMode = 'margin';
+          }
+          setCalculationMode(detectedMode);
 
           results.data.forEach(row => {
             if (!Array.isArray(row)) return;
@@ -182,7 +192,6 @@ export default function Dashboard() {
                 if (clean[i].includes('%')) {
                   const rawMargin = clean[i].replace('%', '').replace(/\./g, '').replace(',', '.').trim();
                   const numMargin = parseFloat(rawMargin);
-                  // Guardamos o número exato, sem arredondar
                   if (!isNaN(numMargin)) margin = numMargin;
                   break;
                 }
@@ -199,31 +208,6 @@ export default function Dashboard() {
             }
           });
 
-          if (parsedProducts.length === 0 && results.data.length > 1) {
-            const headers = results.data[0].map(h => String(h).toLowerCase().trim());
-            const nameIdx = headers.findIndex(h => /nome|produto|descri/i.test(h));
-            const categoryIdx = headers.findIndex(h => /categoria|grupo|tipo/i.test(h));
-            const stockIdx = headers.findIndex(h => /estoque|saldo|qtd|quant/i.test(h));
-            const costIdx = headers.findIndex(h => /custo|pre[cç]o|valor/i.test(h));
-            const marginIdx = headers.findIndex(h => /margem|margin/i.test(h));
-
-            if (nameIdx !== -1) {
-              results.data.slice(1).forEach(row => {
-                const name = row[nameIdx];
-                if (!name) return;
-                const category = categoryIdx !== -1 && row[categoryIdx] ? String(row[categoryIdx]).trim() : 'Geral';
-                const stock = stockIdx !== -1 ? parseFloat(String(row[stockIdx]).replace(',', '.')) || 0 : 0;
-                const cost = costIdx !== -1 ? parseFloat(String(row[costIdx]).replace(',', '.')) || 0 : 0;
-                let margin = null;
-                if (marginIdx !== -1 && row[marginIdx]) {
-                  const m = parseFloat(String(row[marginIdx]).replace('%', '').replace(',', '.'));
-                  if (!isNaN(m)) margin = m;
-                }
-                parsedProducts.push({ name: String(name).trim(), category, stock, cost, margin, is_new: true });
-              });
-            }
-          }
-
           if (parsedProducts.length === 0) {
             alert("Não foram encontrados dados no relatório.");
             setUploading(false);
@@ -233,22 +217,17 @@ export default function Dashboard() {
           const { data, error } = await supabase.from('products').insert(parsedProducts).select();
 
           if (error) {
-            console.error("Erro Supabase:", error);
             alert("Erro ao gravar no banco: " + error.message);
-            setProducts(prev => [
-              ...parsedProducts.map((p, i) => ({ ...p, id: `local-${Date.now()}-${i}` })),
-              ...prev
-            ]);
           } else if (data) {
             setProducts(prev => [...data, ...prev]);
-            alert(`${parsedProducts.length} produtos importados com sucesso!`);
+            alert(`${parsedProducts.length} produtos importados (${detectedMode === 'markup' ? 'Modo Markup' : 'Modo Margem'}).`);
           }
 
           setUploading(false);
           e.target.value = '';
         },
         error: () => {
-          alert("Erro ao ler o arquivo CSV.");
+          alert("Erro ao ler CSV.");
           setUploading(false);
         }
       });
@@ -271,10 +250,9 @@ export default function Dashboard() {
     return matchesSearch && matchesCategory;
   });
 
-  const productsWithoutMargin = products.filter(p => p.margin === null || p.margin === undefined);
+  const productsWithoutMargin = products.filter(p => p.margin === null || p.margin === undefined || p.margin === 0);
   const newProducts = products.filter(p => p.is_new);
 
-  // --- CÁLCULO DO ESTOQUE E PROJEÇÃO COM MARGEM SOBRE A VENDA ---
   let totalStockUnits = 0;
   let totalCostInvested = 0;
   let totalStockProfit = 0;
@@ -286,17 +264,20 @@ export default function Dashboard() {
     totalStockUnits += stockQty;
     totalCostInvested += cost * stockQty;
 
-    if (p.margin !== null && p.margin !== undefined) {
+    if (p.margin !== null && p.margin !== undefined && p.margin > 0) {
       const marginVal = Number(p.margin);
       let suggestedPrice = 0;
       let unitProfit = 0;
 
-      // Fórmula correta de Margem de Lucro sobre a Venda
-      if (marginVal < 100) {
-        suggestedPrice = cost / (1 - (marginVal / 100));
-      } else {
-        // Se a margem for >= 100, assume-se que é Markup para evitar erros de divisão por zero
+      // CÁLCULO INTELIGENTE BASEADO NO MODO DO SEU XPERT
+      if (calculationMode === 'markup') {
         suggestedPrice = cost + (cost * (marginVal / 100));
+      } else {
+        if (marginVal < 100) {
+          suggestedPrice = cost / (1 - (marginVal / 100));
+        } else {
+          suggestedPrice = cost + (cost * (marginVal / 100));
+        }
       }
       
       unitProfit = suggestedPrice - cost;
@@ -327,7 +308,12 @@ export default function Dashboard() {
           >
             SunMaker
           </motion.h1>
-          <p className="text-gray-400 mt-1 text-sm">Dashboard de Inteligência de Margens & Estoque</p>
+          <p className="text-gray-400 mt-1 text-sm flex items-center gap-2">
+            Dashboard de Inteligência
+            <span className="bg-neutral-800 px-2 py-0.5 rounded text-[10px] uppercase text-amber-500 font-bold tracking-wider">
+              {calculationMode === 'markup' ? 'Modo: Markup' : 'Modo: Margem Real'}
+            </span>
+          </p>
         </div>
         
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
@@ -366,7 +352,6 @@ export default function Dashboard() {
             onClick={handleClearAllData} 
             disabled={uploading}
             className={`border border-red-900 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all text-sm ${uploading ? 'bg-neutral-800 text-neutral-500' : 'bg-red-950/50 text-red-500 hover:bg-red-900 hover:text-white'}`}
-            title="Apagar todos os registros do banco de dados"
           >
             <Trash2 size={16} />
             Limpar Tudo
@@ -451,13 +436,11 @@ export default function Dashboard() {
 
         <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-red-950/70 shadow-xl">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-red-400 font-medium text-xs uppercase tracking-wider">Sem Margem</h3>
+            <h3 className="text-red-400 font-medium text-xs uppercase tracking-wider">Revisar Margem</h3>
             <AlertCircle className="text-red-500" size={20} />
           </div>
           <p className="text-3xl font-bold text-red-500">{productsWithoutMargin.length}</p>
-          <p className="text-xs text-gray-500 mt-1">
-            {newProducts.length > 0 ? `${newProducts.length} novos aguardando revisão` : 'Todos revisados'}
-          </p>
+          <p className="text-xs text-gray-500 mt-1">Produtos sem margem ou a 0%</p>
         </motion.div>
       </div>
 
@@ -500,7 +483,7 @@ export default function Dashboard() {
               {filteredProducts.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-gray-500 italic">
-                    Nenhum produto cadastrado. Faça o upload do relatório CSV.
+                    Nenhum produto cadastrado.
                   </td>
                 </tr>
               ) : (
@@ -508,16 +491,20 @@ export default function Dashboard() {
                   const isEditing = editingId === product.id;
                   const stockQty = Number(product.stock) || 0;
                   const cost = Number(product.cost) || 0;
-                  const marginVal = product.margin !== null ? Number(product.margin) : null;
+                  const marginVal = product.margin !== null ? Number(product.margin) : 0;
                   
                   let suggestedPrice = 0;
                   let unitProfit = 0;
 
-                  if (marginVal !== null) {
-                    if (marginVal < 100) {
-                      suggestedPrice = cost / (1 - (marginVal / 100));
-                    } else {
+                  if (marginVal > 0) {
+                    if (calculationMode === 'markup') {
                       suggestedPrice = cost + (cost * (marginVal / 100));
+                    } else {
+                      if (marginVal < 100) {
+                        suggestedPrice = cost / (1 - (marginVal / 100));
+                      } else {
+                        suggestedPrice = cost + (cost * (marginVal / 100));
+                      }
                     }
                     unitProfit = suggestedPrice - cost;
                   }
@@ -542,7 +529,7 @@ export default function Dashboard() {
                                 Novo
                               </span>
                             )}
-                            {product.margin === null && (
+                            {(!product.margin || product.margin === 0) && (
                               <span className="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full border border-red-500/30 uppercase font-bold tracking-wider">
                                 Alerta
                               </span>
@@ -607,23 +594,23 @@ export default function Dashboard() {
                             className="w-20 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
                           />
                         ) : (
-                          product.margin !== null ? (
-                            <span className="text-amber-400 font-bold">{product.margin}%</span>
+                          marginVal > 0 ? (
+                            <span className="text-amber-400 font-bold">{marginVal}%</span>
                           ) : (
-                            <span className="text-gray-500 italic">Não definida</span>
+                            <span className="text-gray-500 italic">0%</span>
                           )
                         )}
                       </td>
                       
                       <td className="p-4 font-mono text-sm">
-                        {!isEditing && product.margin !== null 
+                        {!isEditing && marginVal > 0
                           ? <span className="text-gray-200">R$ {suggestedPrice.toFixed(2)}</span>
                           : <span className="text-gray-600">-</span>
                         }
                       </td>
 
                       <td className="p-4 font-mono text-sm font-semibold">
-                        {!isEditing && product.margin !== null 
+                        {!isEditing && marginVal > 0
                           ? <span className="text-emerald-400">R$ {lotProfit.toFixed(2)}</span>
                           : <span className="text-gray-600">-</span>
                         }
