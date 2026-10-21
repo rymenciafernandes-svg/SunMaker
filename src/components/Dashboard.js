@@ -47,7 +47,6 @@ export default function Dashboard() {
     const cost = Number(product.cost) || 0;
     if (cost <= 0) return;
 
-    // Calcula a margem a partir do preço informado
     let margin = 0;
     if (calculationMode === 'markup') {
       margin = ((price - cost) / cost) * 100;
@@ -182,7 +181,6 @@ export default function Dashboard() {
     });
   };
 
-  // Alteração de Preço Sugerido dentro do modo edição (recalcula a margem em tempo real)
   const handleEditPriceChange = (val) => {
     const rawPrice = String(val).replace(',', '.');
     const numPrice = parseFloat(rawPrice);
@@ -200,7 +198,6 @@ export default function Dashboard() {
     setEditForm(prev => ({ ...prev, price: val, margin: calcMargin }));
   };
 
-  // Alteração de Margem dentro do modo edição (recalcula o preço sugerido em tempo real)
   const handleEditMarginChange = (val) => {
     const rawMargin = String(val).replace(',', '.');
     const numMargin = parseFloat(rawMargin);
@@ -588,7 +585,7 @@ export default function Dashboard() {
             <DollarSign className="text-blue-400" size={20} />
           </div>
           <p className="text-2xl font-bold text-gray-100">
-            R$ {totalCostInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}[cite: 17]
+            R$ {totalCostInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
           <p className="text-xs text-gray-500 mt-1">Custo total das mercadorias</p>
         </motion.div>
@@ -599,10 +596,10 @@ export default function Dashboard() {
             <TrendingUp className="text-emerald-400" size={20} />
           </div>
           <p className="text-2xl font-bold text-emerald-400">
-            R$ {totalStockProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}[cite: 17]
+            R$ {totalStockProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Venda total: <strong className="text-gray-300">R$ {totalSalesValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>[cite: 17]
+            Venda total: <strong className="text-gray-300">R$ {totalSalesValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
           </p>
         </motion.div>
 
@@ -611,8 +608,8 @@ export default function Dashboard() {
             <h3 className="text-red-400 font-medium text-xs uppercase tracking-wider">Revisar Margem</h3>
             <AlertCircle className="text-red-500" size={20} />
           </div>
-          <p className="text-3xl font-bold text-red-500">{productsWithoutMargin.length}[cite: 17]</p>
-          <p className="text-xs text-gray-500 mt-1">Produtos sem margem ou a 0%[cite: 17]</p>
+          <p className="text-3xl font-bold text-red-500">{productsWithoutMargin.length}</p>
+          <p className="text-xs text-gray-500 mt-1">Produtos sem margem ou a 0%</p>
         </motion.div>
       </div>
 
@@ -627,13 +624,13 @@ export default function Dashboard() {
             <h2 className="text-xl font-bold">Listagem de Margens e Estoque</h2>
             {selectedCategory !== 'todas' && (
               <span className="text-xs bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-md border border-amber-500/30">
-                Categoria: {selectedCategory}[cite: 17]
+                Categoria: {selectedCategory}
               </span>
             )}
           </div>
           {(searchTerm || selectedCategory !== 'todas') && (
             <span className="text-xs text-gray-400 bg-neutral-800 px-3 py-1 rounded-full border border-neutral-700">
-              Exibindo: {filteredProducts.length} de {products.length}[cite: 17]
+              Exibindo: {filteredProducts.length} de {products.length}
             </span>
           )}
         </div>
@@ -685,7 +682,6 @@ export default function Dashboard() {
 
                   return (
                     <tr key={product.id} className={`border-b border-neutral-800/60 hover:bg-white/5 transition-colors ${isEditing ? 'bg-white/5' : ''}`}>
-                      {/* Produto */}
                       <td className="p-4 font-medium">
                         {isEditing ? (
                           <input 
@@ -696,10 +692,10 @@ export default function Dashboard() {
                           />
                         ) : (
                           <div className="flex items-center gap-2">
-                            <span>{product.name}[cite: 17]</span>
+                            <span>{product.name}</span>
                             {product.is_new && (
                               <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full border border-emerald-500/30 uppercase font-bold tracking-wider">
-                                Novo[cite: 17]
+                                Novo
                               </span>
                             )}
                             {(!product.margin || product.margin === 0) && (
@@ -711,7 +707,6 @@ export default function Dashboard() {
                         )}
                       </td>
 
-                      {/* Categoria */}
                       <td className="p-4">
                         {isEditing ? (
                           <input 
@@ -722,12 +717,11 @@ export default function Dashboard() {
                           />
                         ) : (
                           <span className="text-xs bg-neutral-800 text-neutral-300 px-2 py-1 rounded border border-neutral-700">
-                            {product.category || 'Geral'}[cite: 17]
+                            {product.category || 'Geral'}
                           </span>
                         )}
                       </td>
 
-                      {/* Estoque */}
                       <td className="p-4 text-center">
                         {isEditing ? (
                           <input 
@@ -739,12 +733,11 @@ export default function Dashboard() {
                           />
                         ) : (
                           <span className="font-mono text-sm text-gray-200">
-                            {stockQty.toLocaleString('pt-BR')} un[cite: 17]
+                            {stockQty.toLocaleString('pt-BR')} un
                           </span>
                         )}
                       </td>
                       
-                      {/* Custo Base */}
                       <td className="p-4 text-gray-300 font-mono text-sm">
                         {isEditing ? (
                           <input 
@@ -755,11 +748,10 @@ export default function Dashboard() {
                             className="w-24 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
                           />
                         ) : (
-                          `R$ ${cost.toFixed(2)}`[cite: 17]
+                          `R$ ${cost.toFixed(2)}`
                         )}
                       </td>
                       
-                      {/* Margem (%) - sincronizada bidirecionalmente no modo edição */}
                       <td className="p-4">
                         {isEditing ? (
                           <input 
@@ -772,14 +764,13 @@ export default function Dashboard() {
                           />
                         ) : (
                           marginVal > 0 ? (
-                            <span className="text-amber-400 font-bold">{marginVal}%</span>[cite: 17]
+                            <span className="text-amber-400 font-bold">{marginVal}%</span>
                           ) : (
                             <span className="text-gray-500 italic">0%</span>
                           )
                         )}
                       </td>
                       
-                      {/* Preço Sugerido - sincronizado bidirecionalmente no modo edição */}
                       <td className="p-4 font-mono text-sm">
                         {isEditing ? (
                           <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2 py-1">
@@ -795,20 +786,18 @@ export default function Dashboard() {
                           </div>
                         ) : (
                           marginVal > 0
-                            ? <span className="text-gray-200">R$ {suggestedPrice.toFixed(2)}</span>[cite: 17]
+                            ? <span className="text-gray-200">R$ {suggestedPrice.toFixed(2)}</span>
                             : <span className="text-gray-600">-</span>
                         )}
                       </td>
 
-                      {/* Lucro do Lote */}
                       <td className="p-4 font-mono text-sm font-semibold">
                         {!isEditing && marginVal > 0
-                          ? <span className="text-emerald-400">R$ {lotProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>[cite: 17]
+                          ? <span className="text-emerald-400">R$ {lotProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           : <span className="text-gray-600">-</span>
                         }
                       </td>
                       
-                      {/* Ações com Campo Rápido de Preço em R$ */}
                       <td className="p-4 no-print">
                         {isEditing ? (
                           <div className="flex items-center justify-center gap-2">
@@ -821,7 +810,6 @@ export default function Dashboard() {
                           </div>
                         ) : (
                           <div className="flex items-center justify-center gap-2">
-                            {/* Caixa rápida de Preço Sugerido em R$ */}
                             <div className="flex items-center bg-black border border-neutral-700 rounded px-2 py-1 focus-within:border-amber-500 transition-colors" title="Digite o Preço Sugerido em R$ e aperte Enter">
                               <span className="text-gray-500 text-xs mr-1 font-semibold">R$</span>
                               <input 
