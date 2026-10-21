@@ -4,7 +4,7 @@ import {
   Upload, Download, Trash2, TrendingUp, AlertCircle, Package, 
   Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap, 
   Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
-  BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, Lock, CheckCircle2
+  BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, Lock, Building2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -26,19 +26,19 @@ export default function App() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
-  // Controle de Leitura Obrigatoria (Trava de Acesso)
+  // Controle de Leitura Obrigatória
   const [readHelp, setReadHelp] = useState(false);
   const [readTerms, setReadTerms] = useState(false);
   const [readPrivacy, setReadPrivacy] = useState(false);
 
-  // Modal de Gerenciamento de Usuarios
+  // Modal de Gerenciamento de Usuários
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [usersList, setUsersList] = useState([]);
   const [newUserName, setNewUserName] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
   const [newUserRole, setNewUserRole] = useState('operador');
 
-  // Redefinicao de Senha no Painel
+  // Redefinição de Senha no Painel
   const [editingPasswordUserId, setEditingPasswordUserId] = useState(null);
   const [updatedPasswordValue, setUpdatedPasswordValue] = useState('');
 
@@ -53,13 +53,13 @@ export default function App() {
   const [editForm, setEditForm] = useState({ name: '', category: '', stock: '', cost: '', margin: '', price: '' });
   const [calculationMode, setCalculationMode] = useState('markup');
 
-  // Recupera sessao e status de leitura salvos no navegador
   useEffect(() => {
     const savedUser = localStorage.getItem('sunmaker_user');
     if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser));
+      const userObj = JSON.parse(savedUser);
+      setCurrentUser(userObj);
       setIsAuthenticated(true);
-      fetchProducts();
+      fetchProducts(userObj.company_id);
     }
 
     const savedCompliance = localStorage.getItem('sunmaker_compliance');
@@ -102,12 +102,11 @@ export default function App() {
     setShowPrivacyModal(true);
   };
 
-  // --- AUTENTICACAO COM VALIDAÇÃO DE LEITURA OBRIGATÓRIA ---
+  // --- AUTENTICAÇÃO COM FILTRO MULTI-EMPRESA ---
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
 
-    // Validacao: O usuario precisa ler as 3 opcoes
     if (!readHelp || !readTerms || !readPrivacy) {
       const pendencias = [];
       if (!readHelp) pendencias.push("Central de ajuda");
@@ -127,20 +126,24 @@ export default function App() {
       .maybeSingle();
 
     if (data) {
-      const userObj = { username: data.username, role: data.role || 'operador' };
+      const userObj = { 
+        username: data.username, 
+        role: data.role || 'operador',
+        company_id: data.company_id || 'empresa-padrao'
+      };
       localStorage.setItem('sunmaker_user', JSON.stringify(userObj));
       setCurrentUser(userObj);
       setIsAuthenticated(true);
-      fetchProducts();
+      fetchProducts(userObj.company_id);
       return;
     }
 
     if (cleanUser === 'admin' && password === 'copasul') {
-      const adminObj = { username: 'admin', role: 'admin' };
+      const adminObj = { username: 'admin', role: 'admin', company_id: 'empresa-padrao' };
       localStorage.setItem('sunmaker_user', JSON.stringify(adminObj));
       setCurrentUser(adminObj);
       setIsAuthenticated(true);
-      fetchProducts();
+      fetchProducts(adminObj.company_id);
       return;
     }
 
@@ -153,10 +156,37 @@ export default function App() {
     setCurrentUser(null);
     setUsername('');
     setPassword('');
+    setProducts([]);
+  };
+
+  // --- CONSULTAS ISOLADAS POR EMPRESA ---
+  const fetchProducts = async (companyId) => {
+    const targetCompany = companyId || currentUser?.company_id;
+    if (!targetCompany) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('company_id', targetCompany)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setProducts(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const fetchUsers = async () => {
-    const { data } = await supabase.from('app_users').select('*').order('created_at', { ascending: false });
+    if (!currentUser?.company_id) return;
+    const { data } = await supabase
+      .from('app_users')
+      .select('*')
+      .eq('company_id', currentUser.company_id)
+      .order('created_at', { ascending: false });
+
     if (data) setUsersList(data);
   };
 
@@ -168,10 +198,15 @@ export default function App() {
   const handleCreateNewUser = async (e) => {
     e.preventDefault();
     const cleanUser = newUserName.trim().toLowerCase();
-    if (!cleanUser || !newUserPass) return;
+    if (!cleanUser || !newUserPass || !currentUser?.company_id) return;
 
     const { error } = await supabase.from('app_users').insert([
-      { username: cleanUser, password: newUserPass, role: newUserRole }
+      { 
+        username: cleanUser, 
+        password: newUserPass, 
+        role: newUserRole, 
+        company_id: currentUser.company_id 
+      }
     ]);
 
     if (error) {
@@ -185,7 +220,7 @@ export default function App() {
   };
 
   const handleUpdateUserPassword = async (id, targetUser) => {
-    if (!updatedPasswordValue || updatedPasswordValue.trim().length < 4) {
+    if (!updatedPasswordValue || updatedPasswordValue.trim().length < 4 || !currentUser?.company_id) {
       alert("A nova senha deve ter no mínimo 4 caracteres.");
       return;
     }
@@ -193,7 +228,8 @@ export default function App() {
     const { error } = await supabase
       .from('app_users')
       .update({ password: updatedPasswordValue })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('company_id', currentUser.company_id);
 
     if (error) {
       alert("Erro ao alterar senha: " + error.message);
@@ -210,31 +246,22 @@ export default function App() {
       alert("Não é permitido excluir o administrador padrão.");
       return;
     }
+    if (!currentUser?.company_id) return;
     if (!window.confirm(`Confirma a remoção do acesso de "${userToDelete}"?`)) return;
 
-    await supabase.from('app_users').delete().eq('id', id);
+    await supabase
+      .from('app_users')
+      .delete()
+      .eq('id', id)
+      .eq('company_id', currentUser.company_id);
+
     fetchUsers();
-  };
-
-  const fetchProducts = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        setProducts(data);
-      }
-    } catch (err) {
-      console.error(err);
-    }
   };
 
   const handleSetPrice = async (id, priceValue) => {
     const rawPrice = String(priceValue).replace('R$', '').replace(/\s/g, '').replace(',', '.');
     const price = parseFloat(rawPrice);
-    if (isNaN(price) || price <= 0) return;
+    if (isNaN(price) || price <= 0 || !currentUser?.company_id) return;
 
     const product = products.find(p => p.id === id);
     if (!product) return;
@@ -253,40 +280,59 @@ export default function App() {
     setProducts(products.map(p => p.id === id ? { ...p, margin, is_new: false } : p));
 
     if (typeof id === 'string' && !id.startsWith('local-')) {
-      await supabase.from('products').update({ margin, is_new: false }).eq('id', id);
+      await supabase
+        .from('products')
+        .update({ margin, is_new: false })
+        .eq('id', id)
+        .eq('company_id', currentUser.company_id);
     }
   };
 
   const handleSetMargin = async (id, marginValue) => {
     const margin = parseFloat(marginValue);
-    if (isNaN(margin)) return;
+    if (isNaN(margin) || !currentUser?.company_id) return;
     
     setProducts(products.map(p => p.id === id ? { ...p, margin, is_new: false } : p));
     
     if (typeof id === 'string' && !id.startsWith('local-')) {
-      await supabase.from('products').update({ margin, is_new: false }).eq('id', id);
+      await supabase
+        .from('products')
+        .update({ margin, is_new: false })
+        .eq('id', id)
+        .eq('company_id', currentUser.company_id);
     }
   };
 
   const handleRemoveMargin = async (id) => {
+    if (!currentUser?.company_id) return;
     setProducts(products.map(p => p.id === id ? { ...p, margin: null } : p));
     if (typeof id === 'string' && !id.startsWith('local-')) {
-      await supabase.from('products').update({ margin: null }).eq('id', id);
+      await supabase
+        .from('products')
+        .update({ margin: null })
+        .eq('id', id)
+        .eq('company_id', currentUser.company_id);
     }
   };
 
   const handleDeleteProduct = async (id) => {
+    if (!currentUser?.company_id) return;
     if (!window.confirm('Tem certeza de que deseja excluir este item?')) return;
     
     setProducts(products.filter(p => p.id !== id));
     
     if (typeof id === 'string' && !id.startsWith('local-')) {
-      await supabase.from('products').delete().eq('id', id);
+      await supabase
+        .from('products')
+        .delete()
+        .eq('id', id)
+        .eq('company_id', currentUser.company_id);
     }
   };
 
   const handleClearAllData = async () => {
-    const confirm = window.confirm('ATENÇÃO: Deseja apagar todos os produtos da base de dados?');
+    if (!currentUser?.company_id) return;
+    const confirm = window.confirm('ATENÇÃO: Deseja apagar todos os produtos cadastrados da sua empresa?');
     
     if (confirm) {
       setUploading(true);
@@ -294,16 +340,19 @@ export default function App() {
       setProducts([]);
 
       try {
-        const { error } = await supabase.from('products').delete().not('id', 'is', null);
+        const { error } = await supabase
+          .from('products')
+          .delete()
+          .eq('company_id', currentUser.company_id);
 
         if (error) {
           alert("Erro: " + error.message);
-          fetchProducts(); 
+          fetchProducts(currentUser.company_id); 
         } else {
-          alert("Base de dados limpa com sucesso.");
+          alert("Base de dados da sua empresa limpa com sucesso.");
         }
       } catch (err) {
-        fetchProducts();
+        fetchProducts(currentUser.company_id);
       }
       
       setUploading(false);
@@ -312,10 +361,10 @@ export default function App() {
   };
 
   const handleApplyFiftyPercentAll = async () => {
-    if (products.length === 0) return;
+    if (products.length === 0 || !currentUser?.company_id) return;
 
     const confirm = window.confirm(
-      `Deseja aplicar a margem de 50% em todos os ${products.length} produtos cadastrados?`
+      `Deseja aplicar a margem de 50% em todos os ${products.length} produtos cadastrados da sua empresa?`
     );
     if (!confirm) return;
 
@@ -328,7 +377,7 @@ export default function App() {
       const { error } = await supabase
         .from('products')
         .update({ margin: 50, is_new: false })
-        .not('id', 'is', null);
+        .eq('company_id', currentUser.company_id);
 
       if (error) {
         const idsToUpdate = products
@@ -337,14 +386,18 @@ export default function App() {
         
         for (let i = 0; i < idsToUpdate.length; i += 200) {
           const batchIds = idsToUpdate.slice(i, i + 200);
-          await supabase.from('products').update({ margin: 50, is_new: false }).in('id', batchIds);
+          await supabase
+            .from('products')
+            .update({ margin: 50, is_new: false })
+            .in('id', batchIds)
+            .eq('company_id', currentUser.company_id);
         }
       }
 
-      alert(`Margem de 50% aplicada com sucesso em todos os ${products.length} produtos.`);
+      alert(`Margem de 50% aplicada com sucesso em todos os ${products.length} produtos da sua empresa.`);
     } catch (err) {
       console.error("Erro ao aplicar 50%:", err);
-      fetchProducts();
+      fetchProducts(currentUser.company_id);
     }
 
     setUploading(false);
@@ -414,6 +467,7 @@ export default function App() {
   };
 
   const saveEditing = async (id) => {
+    if (!currentUser?.company_id) return;
     const updatedCost = parseFloat(editForm.cost) || 0;
     const updatedStock = parseFloat(editForm.stock) || 0;
     const updatedMargin = editForm.margin === '' ? null : parseFloat(editForm.margin);
@@ -431,20 +485,24 @@ export default function App() {
     setEditingId(null);
 
     if (typeof id === 'string' && !id.startsWith('local-')) {
-      await supabase.from('products').update({ 
-        name: editForm.name, 
-        category: editForm.category,
-        stock: updatedStock,
-        cost: updatedCost, 
-        margin: updatedMargin,
-        is_new: false
-      }).eq('id', id);
+      await supabase
+        .from('products')
+        .update({ 
+          name: editForm.name, 
+          category: editForm.category,
+          stock: updatedStock,
+          cost: updatedCost, 
+          margin: updatedMargin,
+          is_new: false
+        })
+        .eq('id', id)
+        .eq('company_id', currentUser.company_id);
     }
   };
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
-    if (!file) return;
+    if (!file || !currentUser?.company_id) return;
     setUploading(true);
     setUploadProgress('Lendo arquivo CSV...');
 
@@ -514,7 +572,8 @@ export default function App() {
                 stock: stock,
                 cost: cost,
                 margin: margin,
-                is_new: true
+                is_new: true,
+                company_id: currentUser.company_id
               });
             }
           });
@@ -539,7 +598,15 @@ export default function App() {
                   const m = parseFloat(String(row[marginIdx]).replace('%', '').replace(',', '.'));
                   if (!isNaN(m)) margin = m;
                 }
-                parsedProducts.push({ name: String(name).trim(), category, stock, cost, margin, is_new: true });
+                parsedProducts.push({ 
+                  name: String(name).trim(), 
+                  category, 
+                  stock, 
+                  cost, 
+                  margin, 
+                  is_new: true,
+                  company_id: currentUser.company_id 
+                });
               });
             }
           }
@@ -574,7 +641,7 @@ export default function App() {
              alert(`${successCount} produtos importados (${detectedMode === 'markup' ? 'Modo Markup' : 'Modo Margem Real'}).`);
           }
           
-          fetchProducts();
+          fetchProducts(currentUser.company_id);
           setUploading(false);
           setUploadProgress('');
           e.target.value = '';
@@ -735,7 +802,6 @@ export default function App() {
             </form>
           </div>
 
-          {/* RODAPE INSTITUCIONAL COM STATUS DE LEITURA OBRIGATORIA */}
           <div className="bg-gray-50/80 p-5 px-8 border-t border-gray-100 space-y-2 text-xs text-gray-600">
             <div 
               onClick={handleOpenHelp}
@@ -810,7 +876,7 @@ export default function App() {
                     <p className="text-gray-300 text-xs leading-relaxed">
                       1. No sistema de gestão (Xpert ou compatível), emita o relatório de produtos em formato CSV.<br/>
                       2. Acesse o painel do SunMaker e clique em "Upload Relatório" no topo.<br/>
-                      3. O sistema processa automaticamente arquivos com milhares de itens em lotes contínuos.
+                      3. O sistema processa automaticamente arquivos com milhares de itens em lotes contínuos para a sua empresa.
                     </p>
                   </div>
 
@@ -934,7 +1000,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* MODAL POLITICA DE PRIVACIDADE */}
+        {/* MODAL POLÍTICA DE PRIVACIDADE */}
         <AnimatePresence>
           {showPrivacyModal && (
             <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
@@ -961,14 +1027,14 @@ export default function App() {
                   <div className="border-l-2 border-emerald-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">1. Coleta e Tratamento de Dados</h4>
                     <p>
-                      A plataforma SunMaker realiza o tratamento mínimo de dados necessários para a operação comercial, coletando exclusivamente nomes de usuário de acesso, perfis de função (Operador ou Administrador) e metadados de modificação nos registros de estoque e precificação.
+                      A plataforma SunMaker realiza o tratamento mínimo de dados necessários para a operação comercial, coletando exclusivamente nomes de usuário de acesso, perfis de função (Operador ou Administrador), identificador de empresa e metadados de modificação nos registros de estoque e precificação.
                     </p>
                   </div>
 
                   <div className="border-l-2 border-emerald-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">2. Armazenamento e Segurança da Informação</h4>
                     <p>
-                      Todas as informações são armazenadas em infraestrutura de nuvem segura provida pelo Supabase, empregando criptografia em trânsito (protocolo TLS/SSL) e controles de acesso por chaves restritas. Senhas de acesso são protegidas e administradas exclusivamente pelo perfil gestor.
+                      Todas as informações são armazenadas em infraestrutura de nuvem segura provida pelo Supabase, empregando criptografia em trânsito (protocolo TLS/SSL), isolamento lógico multi-empresa e controles de acesso restritos. Senhas de acesso são protegidas e administradas exclusivamente pelo perfil gestor.
                     </p>
                   </div>
 
@@ -1027,16 +1093,22 @@ export default function App() {
           >
             SunMaker
           </motion.h1>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             <p className="text-gray-400 text-sm">Dashboard de Inteligência</p>
             <span className="bg-neutral-800 px-2 py-0.5 rounded text-[10px] uppercase text-amber-500 font-bold tracking-wider">
               {calculationMode === 'markup' ? 'Modo: Markup' : 'Modo: Margem Real'}
             </span>
             {currentUser && (
-              <span className="bg-emerald-950/60 text-emerald-400 border border-emerald-900/50 px-2 py-0.5 rounded text-[10px] font-medium flex items-center gap-1">
-                <Shield size={10} />
-                {currentUser.username}
-              </span>
+              <>
+                <span className="bg-emerald-950/60 text-emerald-400 border border-emerald-900/50 px-2 py-0.5 rounded text-[10px] font-medium flex items-center gap-1">
+                  <Shield size={10} />
+                  {currentUser.username}
+                </span>
+                <span className="bg-blue-950/60 text-blue-400 border border-blue-900/50 px-2 py-0.5 rounded text-[10px] font-medium flex items-center gap-1">
+                  <Building2 size={10} />
+                  {currentUser.company_id}
+                </span>
+              </>
             )}
           </div>
         </div>
@@ -1077,7 +1149,7 @@ export default function App() {
             onClick={handleApplyFiftyPercentAll}
             disabled={uploading || products.length === 0}
             className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm disabled:opacity-40"
-            title="Substituir e definir margem de 50% em todos os produtos cadastrados"
+            title="Substituir e definir margem de 50% em todos os produtos cadastrados da sua empresa"
           >
             <Zap size={15} className="text-amber-400" />
             Aplicar 50% em Todos
@@ -1120,7 +1192,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* MODAL DE GERENCIAMENTO DE USUARIOS COM REDEFINICAO DE SENHA */}
+      {/* MODAL DE GERENCIAMENTO DE USUÁRIOS */}
       <AnimatePresence>
         {showUsersModal && (
           <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
@@ -1379,7 +1451,7 @@ export default function App() {
               {filteredProducts.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-gray-500 italic">
-                    Nenhum produto cadastrado.
+                    Nenhum produto cadastrado para a sua empresa.
                   </td>
                 </tr>
               ) : (
@@ -1500,7 +1572,7 @@ export default function App() {
                       
                       <td className="p-4 font-mono text-sm">
                         {isEditing ? (
-                          <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2.5 py-1">
+                          <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2 py-1">
                             <span className="text-gray-400 text-xs mr-1">R$</span>
                             <input 
                               type="number" 
