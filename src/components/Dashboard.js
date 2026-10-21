@@ -4,7 +4,7 @@ import {
   Upload, Download, Trash2, TrendingUp, AlertCircle, Package, 
   Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap, 
   Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
-  BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, CheckCircle2
+  BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -668,7 +668,7 @@ export default function App() {
                   href="#" 
                   onClick={(e) => { 
                     e.preventDefault(); 
-                    alert("Para redefinir sua senha, solicite ao administrador do posto para alterar seus dados no painel de Usuarios."); 
+                    alert("Para redefinir sua senha, solicite ao administrador do sistema para alterar seus dados no painel de Usuarios."); 
                   }}
                   className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
                 >
@@ -734,7 +734,7 @@ export default function App() {
                       <h4>Como importar relatorios do sistema Xpert</h4>
                     </div>
                     <p className="text-gray-300 text-xs leading-relaxed">
-                      1. No sistema Xpert, emita o relatorio de produtos em formato CSV.<br/>
+                      1. No sistema de gestao (Xpert ou compativel), emita o relatorio de produtos em formato CSV.<br/>
                       2. Acesse o painel do SunMaker e clique em "Upload Relatorio" no topo.<br/>
                       3. O sistema processa automaticamente arquivos com milhares de itens em lotes continuos.
                     </p>
@@ -756,7 +756,7 @@ export default function App() {
                       <h4>Diferenca entre Markup e Margem Real</h4>
                     </div>
                     <p className="text-gray-300 text-xs leading-relaxed">
-                      O SunMaker le os cabecalhos do arquivo exportado e identifica automaticamente se os dados foram gerados como Markup (acrescimo sobre o custo) ou Margem Real (lucro sobre a venda), garantindo consistencia matematica com o sistema da loja.
+                      O SunMaker le os cabecalhos do arquivo exportado e identifica automaticamente se os dados foram gerados como Markup (acrescimo sobre o custo) ou Margem Real (lucro sobre a venda), garantindo consistencia matematica com o sistema do estabelecimento.
                     </p>
                   </div>
 
@@ -784,7 +784,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* MODAL TERMOS DE USO */}
+        {/* MODAL TERMOS DE USO (GENERICO / COMERCIAL) */}
         <AnimatePresence>
           {showTermsModal && (
             <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
@@ -811,43 +811,42 @@ export default function App() {
                   <div className="border-l-2 border-amber-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">1. Objeto e Finalidade</h4>
                     <p>
-                      A plataforma SunMaker e uma ferramenta de uso estritamente corporativo e confidencial, desenvolvida para gestao de precos, sincronizacao de relatorios e acompanhamento de margens da loja de conveniencia e do posto de combustiveis. O acesso e restrito a colaboradores autorizados pela administracao.
+                      A plataforma SunMaker e uma ferramenta de uso corporativo desenvolvida para gestao de precos, sincronizacao de relatorios e analise de rentabilidade em operacoes de varejo e distribuicao comercial. O acesso e restrito a colaboradores e usuarios devidamente autorizados pela administracao do estabelecimento.
                     </p>
                   </div>
 
                   <div className="border-l-2 border-amber-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">2. Confidencialidade Comercial</h4>
                     <p>
-                      Todos os dados exibidos na plataforma, incluindo custos de aquisicao de mercadorias, margens de lucro, valores de estoque e precificacoes sugeridas, configuram segredo de negocio. E terminantemente proibida a exportacao, compartilhamento ou divulgacao dessas informacoes para terceiros sem autorizacao previa formal.
+                      Todos os dados contidos na plataforma, incluindo custos de aquisicao de produtos, margens praticadas, estoque fisico e projecoes de lucratividade, constituem informacoes confidenciais e segredo comercial. E terminantemente proibida a extracao, copia ou repasse desses registros para terceiros nao autorizados.
                     </p>
                   </div>
 
                   <div className="border-l-2 border-amber-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">3. Responsabilidade pelas Credenciais</h4>
                     <p>
-                      Cada operador e individualmente responsavel pela guarda e sigilo de seu login e senha. Qualquer alteracao realizada no banco de dados (modificacao de precos, aplicacao de margens globais ou exclusao de registros) sera vinculada e atribuida a conta autenticada no momento da operacao.
+                      Cada operador e responsavel pela seguranca de seu login e senha. Quaisquer acoes executadas na base de dados (atualizacao de precos, definicao de margens ou exclusao de cadastros) serao registradas e vinculadas a conta autenticada no momento da operacao.
                     </p>
                   </div>
 
                   <div className="border-l-2 border-amber-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">4. Integridade das Operacoes</h4>
                     <p>
-                      O usuario compromete-se a validar os relatorios CSV originados do sistema Xpert antes da confirmacao do upload e a atentar-se aos precos cadastrados em lote, estando ciente de que valores digitados incorretamente impactam diretamente as projecoes financeiras e a integridade do negocio.
+                      O usuario compromete-se a conferir a integridade dos relatorios importados e dos valores aplicados na tabela, ciente de que a precificacao incorreta reflete diretamente no faturamento e nos resultados financeiros do negocio.
                     </p>
                   </div>
 
                   <div className="border-l-2 border-amber-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">5. Auditoria e Encerramento de Acesso</h4>
                     <p>
-                      A administracao do posto reserva-se o direito de auditar os acessos, redefinir senhas, alterar perfis de permissao (Operador / Administrador) e revogar sumariamente contas de usuarios desligados ou que violem as normas de seguranca estabelecidas nestes termos.
+                      A administracao reserva-se o direito de monitorar o uso da ferramenta, redefinir senhas, alterar niveis de permissao (Operador ou Administrador) e revogar acessos de usuarios inativos, desligados ou que descumpram as diretrizes de seguranca.
                     </p>
                   </div>
                 </div>
 
                 <div className="p-4 bg-neutral-950 border-t border-neutral-800 flex justify-between items-center">
-                  <span className="text-[11px] text-gray-500 flex items-center gap-1.5">
-                    <CheckCircle2 size={13} className="text-emerald-500" />
-                    Valido para a unidade Conveniencia Copasul
+                  <span className="text-[11px] text-gray-500">
+                    Termos e Condicoes Gerais de Uso da Plataforma
                   </span>
                   <button 
                     onClick={() => setShowTermsModal(false)}
@@ -1351,7 +1350,7 @@ export default function App() {
                       
                       <td className="p-4 font-mono text-sm">
                         {isEditing ? (
-                          <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2 py-1">
+                          <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2.5 py-1">
                             <span className="text-gray-400 text-xs mr-1">R$</span>
                             <input 
                               type="number" 
