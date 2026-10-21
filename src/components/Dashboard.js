@@ -168,7 +168,6 @@ export default function App() {
     setShowSettingsModal(false);
   };
 
-  // Upload e Redimensionamento da Foto de Perfil
   const handleAvatarUpload = (e) => {
     const file = e.target.files[0];
     if (!file || !currentUser) return;
@@ -742,6 +741,7 @@ export default function App() {
 
   const categoriesList = ['todas', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
 
+  // Filtro Dinâmico por Texto e Categoria
   const filteredProducts = products.filter(p => {
     const term = searchTerm.toLowerCase();
     const matchesSearch = p.name.toLowerCase().includes(term) || 
@@ -750,15 +750,16 @@ export default function App() {
     return matchesSearch && matchesCategory;
   });
 
-  const productsWithoutMargin = products.filter(p => p.margin === null || p.margin === undefined || p.margin === 0);
-  const newProducts = products.filter(p => p.is_new);
+  // Métricas calculadas estritamente com base nos produtos exibidos (filtrados)
+  const productsWithoutMargin = filteredProducts.filter(p => p.margin === null || p.margin === undefined || p.margin === 0);
+  const newProducts = filteredProducts.filter(p => p.is_new);
 
   let totalStockUnits = 0;
   let totalCostInvested = 0;
   let totalStockProfit = 0;
   let totalSalesValue = 0;
 
-  products.forEach(p => {
+  filteredProducts.forEach(p => {
     const stockQty = Number(p.stock) || 0;
     const cost = Number(p.cost) || 0;
     totalStockUnits += stockQty;
@@ -993,7 +994,7 @@ export default function App() {
                 <div className="p-4 bg-neutral-950 border-t border-neutral-800 text-right">
                   <button 
                     onClick={() => setShowHelpModal(false)}
-                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
                   >
                     Confirmar Leitura e Fechar
                   </button>
@@ -1069,7 +1070,7 @@ export default function App() {
                   </span>
                   <button 
                     onClick={() => setShowTermsModal(false)}
-                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
                   >
                     Confirmar Leitura e Fechar
                   </button>
@@ -1145,7 +1146,7 @@ export default function App() {
                   </span>
                   <button 
                     onClick={() => setShowPrivacyModal(false)}
-                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
                   >
                     Confirmar Leitura e Fechar
                   </button>
@@ -1163,6 +1164,7 @@ export default function App() {
   // ==========================================
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans text-white">
+      {/* CABEÇALHO */}
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8 border-b border-gray-800 pb-6 no-print">
         <div>
           <motion.h1 
@@ -1215,7 +1217,7 @@ export default function App() {
           {/* Botão Central de Configurações */}
           <button 
             onClick={() => { fetchUsers(); setShowSettingsModal(true); }}
-            className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm"
+            className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm cursor-pointer"
             title="Abrir Central de Configurações"
           >
             {currentUser?.avatar_url ? (
@@ -1233,7 +1235,7 @@ export default function App() {
           {/* Botão Sair */}
           <button 
             onClick={handleLogout}
-            className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm"
+            className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm cursor-pointer"
             title="Encerrar sessão"
           >
             <LogOut size={16} className="text-gray-400" />
@@ -1252,7 +1254,6 @@ export default function App() {
               exit={{ scale: 0.95, opacity: 0 }}
               className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row max-h-[85vh]"
             >
-              {/* Menu Lateral de Abas */}
               <div className="w-full md:w-56 bg-neutral-950 p-4 border-b md:border-b-0 md:border-r border-neutral-800 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-2 pb-4 mb-3 border-b border-neutral-800 text-white font-bold text-sm">
@@ -1263,7 +1264,7 @@ export default function App() {
                   <nav className="space-y-1">
                     <button
                       onClick={() => setActiveSettingsTab('usuarios')}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${activeSettingsTab === 'usuarios' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-gray-400 hover:bg-neutral-900 hover:text-white'}`}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${activeSettingsTab === 'usuarios' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-gray-400 hover:bg-neutral-900 hover:text-white'}`}
                     >
                       <Users size={15} />
                       Usuários
@@ -1271,7 +1272,7 @@ export default function App() {
 
                     <button
                       onClick={() => setActiveSettingsTab('exportacao')}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${activeSettingsTab === 'exportacao' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-gray-400 hover:bg-neutral-900 hover:text-white'}`}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${activeSettingsTab === 'exportacao' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-gray-400 hover:bg-neutral-900 hover:text-white'}`}
                     >
                       <Download size={15} />
                       Exportação
@@ -1279,7 +1280,7 @@ export default function App() {
 
                     <button
                       onClick={() => setActiveSettingsTab('margens')}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${activeSettingsTab === 'margens' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-gray-400 hover:bg-neutral-900 hover:text-white'}`}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${activeSettingsTab === 'margens' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-gray-400 hover:bg-neutral-900 hover:text-white'}`}
                     >
                       <Sliders size={15} />
                       Margens e Regras
@@ -1287,7 +1288,7 @@ export default function App() {
 
                     <button
                       onClick={() => setActiveSettingsTab('empresa')}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${activeSettingsTab === 'empresa' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-gray-400 hover:bg-neutral-900 hover:text-white'}`}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${activeSettingsTab === 'empresa' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-gray-400 hover:bg-neutral-900 hover:text-white'}`}
                     >
                       <Building2 size={15} />
                       Empresa e Conta
@@ -1300,7 +1301,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Conteúdo da Aba Ativa */}
               <div className="flex-1 p-6 overflow-y-auto flex flex-col justify-between">
                 <div>
                   <div className="flex justify-between items-center pb-4 mb-5 border-b border-neutral-800">
@@ -1310,7 +1310,7 @@ export default function App() {
                       {activeSettingsTab === 'margens' && "Regras de Margem e Base de Dados"}
                       {activeSettingsTab === 'empresa' && "Informações da Empresa e Sessão"}
                     </h3>
-                    <button onClick={() => setShowSettingsModal(false)} className="text-gray-400 hover:text-white p-1 rounded-lg">
+                    <button onClick={() => setShowSettingsModal(false)} className="text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer">
                       <X size={18} />
                     </button>
                   </div>
@@ -1345,7 +1345,7 @@ export default function App() {
                           <select
                             value={newUserRole}
                             onChange={(e) => setNewUserRole(e.target.value)}
-                            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-gray-300 outline-none"
+                            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-gray-300 outline-none cursor-pointer"
                           >
                             <option value="operador">Perfil: Operador</option>
                             <option value="admin">Perfil: Administrador</option>
@@ -1353,7 +1353,7 @@ export default function App() {
 
                           <button 
                             type="submit"
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1"
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1 cursor-pointer"
                           >
                             Salvar Novo Login
                           </button>
@@ -1390,7 +1390,7 @@ export default function App() {
                                         setUpdatedPasswordValue('');
                                       }
                                     }}
-                                    className="p-1.5 text-amber-400 hover:bg-amber-400/10 rounded transition-colors"
+                                    className="p-1.5 text-amber-400 hover:bg-amber-400/10 rounded transition-colors cursor-pointer"
                                     title="Redefinir senha deste usuário"
                                   >
                                     <Key size={16} />
@@ -1398,7 +1398,7 @@ export default function App() {
                                   {u.username !== 'admin' && (
                                     <button 
                                       onClick={() => handleDeleteUser(u.id, u.username)}
-                                      className="p-1.5 text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                      className="p-1.5 text-red-400 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
                                       title="Remover acesso deste usuário"
                                     >
                                       <Trash2 size={16} />
@@ -1418,13 +1418,13 @@ export default function App() {
                                   />
                                   <button
                                     onClick={() => handleUpdateUserPassword(u.id, u.username)}
-                                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded text-xs font-bold transition-all"
+                                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer"
                                   >
                                     Confirmar
                                   </button>
                                   <button
                                     onClick={() => { setEditingPasswordUserId(null); setUpdatedPasswordValue(''); }}
-                                    className="bg-neutral-800 hover:bg-neutral-700 text-gray-400 px-2.5 py-1 rounded text-xs transition-all"
+                                    className="bg-neutral-800 hover:bg-neutral-700 text-gray-400 px-2.5 py-1 rounded text-xs transition-all cursor-pointer"
                                   >
                                     Cancelar
                                   </button>
@@ -1446,12 +1446,12 @@ export default function App() {
                           <h4>Relatório Operacional em PDF</h4>
                         </div>
                         <p className="text-gray-300 text-xs leading-relaxed">
-                          O arquivo PDF consolida todos os produtos da sua empresa, discriminando o estoque físico atual, custo unitário, margem calculada e valor sugerido de venda de acordo com os filtros de busca aplicados.
+                          O arquivo PDF consolida os produtos exibidos na tela, discriminando o estoque físico atual, custo unitário, margem calculada e valor sugerido de venda de acordo com os filtros de busca aplicados.
                         </p>
                         <div className="grid grid-cols-2 gap-3 pt-2 text-xs">
                           <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800">
-                            <span className="text-gray-500 block">Total de Itens:</span>
-                            <span className="font-bold text-white text-sm">{products.length} itens</span>
+                            <span className="text-gray-500 block">Itens no Relatório:</span>
+                            <span className="font-bold text-white text-sm">{filteredProducts.length} itens</span>
                           </div>
                           <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800">
                             <span className="text-gray-500 block">Estoque Total:</span>
@@ -1461,7 +1461,7 @@ export default function App() {
 
                         <button 
                           onClick={handlePrintPDF}
-                          className="w-full bg-amber-500 hover:bg-amber-400 text-black font-bold py-2.5 rounded-lg text-xs flex items-center justify-center gap-2 transition-all mt-2"
+                          className="w-full bg-amber-500 hover:bg-amber-400 text-black font-bold py-2.5 rounded-lg text-xs flex items-center justify-center gap-2 transition-all mt-2 cursor-pointer"
                         >
                           <Download size={15} />
                           Gerar e Baixar PDF Agora
@@ -1497,14 +1497,14 @@ export default function App() {
                           <button
                             onClick={handleApplyCustomMarginAll}
                             disabled={uploading || products.length === 0}
-                            className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-4 py-2 rounded-lg text-xs transition-all disabled:opacity-40"
+                            className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-4 py-2 rounded-lg text-xs transition-all disabled:opacity-40 cursor-pointer"
                           >
                             Aplicar em Todos
                           </button>
 
                           <button
                             onClick={() => { setGlobalMarginValue('50'); }}
-                            className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 px-3 py-2 rounded-lg text-xs font-medium"
+                            className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer"
                           >
                             50% Padrão
                           </button>
@@ -1532,7 +1532,7 @@ export default function App() {
                         <button
                           onClick={handleClearAllData}
                           disabled={uploading || products.length === 0}
-                          className="bg-red-900 hover:bg-red-800 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-40"
+                          className="bg-red-900 hover:bg-red-800 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-40 cursor-pointer"
                         >
                           Limpar Todos os Produtos
                         </button>
@@ -1540,18 +1540,16 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* ABA: EMPRESA E CONTA COM FOTO DE PERFIL */}
+                  {/* ABA: EMPRESA E CONTA */}
                   {activeSettingsTab === 'empresa' && (
                     <div className="space-y-4 text-xs">
                       <div className="bg-neutral-950 p-5 rounded-xl border border-neutral-800 space-y-4">
-                        {/* Cabeçalho do Card com Avatar no Canto Superior Direito */}
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
                             <Building2 size={18} />
                             <h4>Identificação da Conta</h4>
                           </div>
 
-                          {/* Foto de Perfil Interativa */}
                           <div className="flex flex-col items-center">
                             <div className="relative group">
                               <div className="w-16 h-16 rounded-full overflow-hidden bg-neutral-900 border-2 border-amber-500/60 shadow-lg flex items-center justify-center">
@@ -1568,7 +1566,6 @@ export default function App() {
                                 )}
                               </div>
 
-                              {/* Botão de Trocar Imagem sobre o Avatar */}
                               <button
                                 onClick={() => avatarInputRef.current?.click()}
                                 className="absolute inset-0 bg-black/60 rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[10px] font-semibold cursor-pointer"
@@ -1606,7 +1603,6 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Detalhes da Conta */}
                         <div className="space-y-2 text-gray-300 pt-1">
                           <div className="flex justify-between py-1 border-b border-neutral-900">
                             <span className="text-gray-500">Usuário Conectado:</span>
@@ -1654,7 +1650,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* ESTIMATIVA DE PERÍODO */}
+      {/* ESTIMATIVA DE PERÍODO (CALCULADA PELA CATEGORIA ATIVA) */}
       <motion.div 
         initial={{ opacity: 0 }} 
         animate={{ opacity: 1 }} 
@@ -1676,26 +1672,26 @@ export default function App() {
         </div>
         <div className="text-left md:text-right">
           <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold no-print">
-            Projeção Estimada de Lucro ({period}):
+            Projeção Estimada de Lucro ({period}) {selectedCategory !== 'todas' ? `- ${selectedCategory}` : ''}:
           </p>
           <p className="text-2xl font-black text-emerald-400">
             R$ {getPeriodProfit().toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
-          <span className="text-[11px] text-gray-500">Calculado sobre a rotatividade do estoque cadastrado</span>
+          <span className="text-[11px] text-gray-500">Calculado sobre a rotatividade dos itens exibidos</span>
         </div>
       </motion.div>
 
-      {/* CARDS DE RESUMO FINANCEIRO */}
+      {/* CARDS DE RESUMO FINANCEIRO (VINCULADOS AO FILTRO ATIVO) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8 no-print">
         <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 shadow-xl">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-gray-400 font-medium text-xs uppercase tracking-wider">Produtos / Itens</h3>
             <Package className="text-amber-500" size={20} />
           </div>
-          <p className="text-3xl font-bold">{products.length}</p>
+          <p className="text-3xl font-bold">{filteredProducts.length}</p>
           <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
             <Boxes size={14} className="text-neutral-500" />
-            <span className="text-amber-400 font-semibold">{totalStockUnits.toLocaleString('pt-BR')}</span> unidades em loja
+            <span className="text-amber-400 font-semibold">{totalStockUnits.toLocaleString('pt-BR')}</span> unidades {selectedCategory !== 'todas' ? 'na categoria' : 'em loja'}
           </p>
         </motion.div>
         
@@ -1707,7 +1703,7 @@ export default function App() {
           <p className="text-2xl font-bold text-gray-100">
             R$ {totalCostInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Custo total das mercadorias</p>
+          <p className="text-xs text-gray-500 mt-1">Custo dos itens exibidos</p>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-emerald-950/70 shadow-xl">
@@ -1719,7 +1715,7 @@ export default function App() {
             R$ {totalStockProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Venda total: <strong className="text-gray-300">R$ {totalSalesValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            Venda estimada: <strong className="text-gray-300">R$ {totalSalesValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
           </p>
         </motion.div>
 
@@ -1729,7 +1725,7 @@ export default function App() {
             <AlertCircle className="text-red-500" size={20} />
           </div>
           <p className="text-3xl font-bold text-red-500">{productsWithoutMargin.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Produtos sem margem ou a 0%</p>
+          <p className="text-xs text-gray-500 mt-1">Itens sem margem no filtro ativo</p>
         </motion.div>
       </div>
 
@@ -1773,7 +1769,7 @@ export default function App() {
               {filteredProducts.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-gray-500 italic">
-                    Nenhum produto cadastrado para a sua empresa.
+                    Nenhum produto cadastrado para a sua empresa nesta categoria.
                   </td>
                 </tr>
               ) : (
@@ -1922,10 +1918,10 @@ export default function App() {
                       <td className="p-4 no-print">
                         {isEditing ? (
                           <div className="flex items-center justify-center gap-2">
-                            <button onClick={() => saveEditing(product.id)} className="p-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded" title="Confirmar">
+                            <button onClick={() => saveEditing(product.id)} className="p-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded cursor-pointer" title="Confirmar">
                               <Check size={18} />
                             </button>
-                            <button onClick={cancelEditing} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded" title="Cancelar">
+                            <button onClick={cancelEditing} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded cursor-pointer" title="Cancelar">
                               <X size={18} />
                             </button>
                           </div>
@@ -1955,21 +1951,21 @@ export default function App() {
 
                             <button 
                               onClick={() => startEditing(product)} 
-                              className="p-1.5 text-gray-400 hover:text-amber-400 hover:bg-amber-400/10 rounded transition-colors" 
+                              className="p-1.5 text-gray-400 hover:text-amber-400 hover:bg-amber-400/10 rounded transition-colors cursor-pointer" 
                               title="Editar Dados"
                             >
                               <Edit3 size={16} />
                             </button>
                             <button 
                               onClick={() => handleRemoveMargin(product.id)} 
-                              className="p-1.5 text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded transition-colors" 
+                              className="p-1.5 text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded transition-colors cursor-pointer" 
                               title="Zerar Margem"
                             >
                               <AlertCircle size={16} />
                             </button>
                             <button 
                               onClick={() => handleDeleteProduct(product.id)} 
-                              className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors" 
+                              className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors cursor-pointer" 
                               title="Excluir Produto"
                             >
                               <Trash2 size={16} />
