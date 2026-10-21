@@ -4,7 +4,7 @@ import {
   Upload, Download, Trash2, TrendingUp, AlertCircle, Package, 
   Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap, 
   Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
-  BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale
+  BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, Lock, CheckCircle2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -24,6 +24,12 @@ export default function App() {
   // Modais Institucionais e Suporte
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+
+  // Controle de Leitura Obrigatoria (Trava de Acesso)
+  const [readHelp, setReadHelp] = useState(false);
+  const [readTerms, setReadTerms] = useState(false);
+  const [readPrivacy, setReadPrivacy] = useState(false);
 
   // Modal de Gerenciamento de Usuarios
   const [showUsersModal, setShowUsersModal] = useState(false);
@@ -47,6 +53,7 @@ export default function App() {
   const [editForm, setEditForm] = useState({ name: '', category: '', stock: '', cost: '', margin: '', price: '' });
   const [calculationMode, setCalculationMode] = useState('markup');
 
+  // Recupera sessao e status de leitura salvos no navegador
   useEffect(() => {
     const savedUser = localStorage.getItem('sunmaker_user');
     if (savedUser) {
@@ -54,11 +61,61 @@ export default function App() {
       setIsAuthenticated(true);
       fetchProducts();
     }
+
+    const savedCompliance = localStorage.getItem('sunmaker_compliance');
+    if (savedCompliance) {
+      try {
+        const parsed = JSON.parse(savedCompliance);
+        if (parsed.help) setReadHelp(true);
+        if (parsed.terms) setReadTerms(true);
+        if (parsed.privacy) setReadPrivacy(true);
+      } catch (err) {
+        console.error(err);
+      }
+    }
   }, []);
 
+  const saveCompliance = (type) => {
+    const compliance = {
+      help: type === 'help' ? true : readHelp,
+      terms: type === 'terms' ? true : readTerms,
+      privacy: type === 'privacy' ? true : readPrivacy,
+    };
+    localStorage.setItem('sunmaker_compliance', JSON.stringify(compliance));
+  };
+
+  const handleOpenHelp = () => {
+    setReadHelp(true);
+    saveCompliance('help');
+    setShowHelpModal(true);
+  };
+
+  const handleOpenTerms = () => {
+    setReadTerms(true);
+    saveCompliance('terms');
+    setShowTermsModal(true);
+  };
+
+  const handleOpenPrivacy = () => {
+    setReadPrivacy(true);
+    saveCompliance('privacy');
+    setShowPrivacyModal(true);
+  };
+
+  // --- AUTENTICACAO COM VALIDAÇÃO DE LEITURA OBRIGATÓRIA ---
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
+
+    // Validacao: O usuario precisa ler as 3 opcoes
+    if (!readHelp || !readTerms || !readPrivacy) {
+      const pendencias = [];
+      if (!readHelp) pendencias.push("Central de ajuda");
+      if (!readTerms) pendencias.push("Termos de uso");
+      if (!readPrivacy) pendencias.push("Política de privacidade");
+      setAuthError(`Acesso bloqueado: é obrigatório abrir e ler os seguintes documentos no rodapé antes de entrar: ${pendencias.join(', ')}.`);
+      return;
+    }
 
     const cleanUser = username.trim().toLowerCase();
 
@@ -621,7 +678,7 @@ export default function App() {
             </div>
 
             {authError && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-4 p-2.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-medium text-center">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-4 p-2.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-medium text-center leading-relaxed">
                 {authError}
               </motion.div>
             )}
@@ -678,28 +735,45 @@ export default function App() {
             </form>
           </div>
 
-          {/* RODAPE INSTITUCIONAL */}
+          {/* RODAPE INSTITUCIONAL COM STATUS DE LEITURA OBRIGATORIA */}
           <div className="bg-gray-50/80 p-5 px-8 border-t border-gray-100 space-y-2 text-xs text-gray-600">
             <div 
-              onClick={() => setShowHelpModal(true)}
-              className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors"
+              onClick={handleOpenHelp}
+              className="flex items-center justify-between cursor-pointer hover:text-gray-900 transition-colors"
             >
-              <HelpCircle size={14} className="text-gray-400" />
-              <span>Central de ajuda</span>
+              <div className="flex items-center gap-2">
+                <HelpCircle size={14} className="text-gray-400" />
+                <span>Central de ajuda</span>
+              </div>
+              <span className={`text-[10px] font-semibold ${readHelp ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {readHelp ? '[Lido]' : '[Pendente]'}
+              </span>
             </div>
+
             <div 
-              onClick={() => setShowTermsModal(true)}
-              className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors"
+              onClick={handleOpenTerms}
+              className="flex items-center justify-between cursor-pointer hover:text-gray-900 transition-colors"
             >
-              <Info size={14} className="text-gray-400" />
-              <span>Termos de uso</span>
+              <div className="flex items-center gap-2">
+                <Info size={14} className="text-gray-400" />
+                <span>Termos de uso</span>
+              </div>
+              <span className={`text-[10px] font-semibold ${readTerms ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {readTerms ? '[Lido]' : '[Pendente]'}
+              </span>
             </div>
+
             <div 
-              onClick={() => alert("Módulo de Política de Privacidade em desenvolvimento.")}
-              className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors"
+              onClick={handleOpenPrivacy}
+              className="flex items-center justify-between cursor-pointer hover:text-gray-900 transition-colors"
             >
-              <FileText size={14} className="text-gray-400" />
-              <span>Política de privacidade</span>
+              <div className="flex items-center gap-2">
+                <FileText size={14} className="text-gray-400" />
+                <span>Política de privacidade</span>
+              </div>
+              <span className={`text-[10px] font-semibold ${readPrivacy ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {readPrivacy ? '[Lido]' : '[Pendente]'}
+              </span>
             </div>
           </div>
         </motion.div>
@@ -776,7 +850,7 @@ export default function App() {
                     onClick={() => setShowHelpModal(false)}
                     className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all"
                   >
-                    Fechar
+                    Confirmar Leitura e Fechar
                   </button>
                 </div>
               </motion.div>
@@ -852,7 +926,83 @@ export default function App() {
                     onClick={() => setShowTermsModal(false)}
                     className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all"
                   >
-                    Entendido
+                    Confirmar Leitura e Fechar
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* MODAL POLITICA DE PRIVACIDADE */}
+        <AnimatePresence>
+          {showPrivacyModal && (
+            <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl text-white"
+              >
+                <div className="p-6 border-b border-neutral-800 flex justify-between items-center bg-black/40">
+                  <div className="flex items-center gap-2">
+                    <Lock className="text-amber-500" size={22} />
+                    <h3 className="text-lg font-bold text-white">Política de Privacidade - Plataforma SunMaker</h3>
+                  </div>
+                  <button 
+                    onClick={() => setShowPrivacyModal(false)} 
+                    className="text-gray-400 hover:text-white p-1 rounded-lg"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="p-6 max-h-[75vh] overflow-y-auto space-y-4 text-xs leading-relaxed text-gray-300">
+                  <div className="border-l-2 border-emerald-500 pl-3">
+                    <h4 className="text-sm font-bold text-white mb-1">1. Coleta e Tratamento de Dados</h4>
+                    <p>
+                      A plataforma SunMaker realiza o tratamento mínimo de dados necessários para a operação comercial, coletando exclusivamente nomes de usuário de acesso, perfis de função (Operador ou Administrador) e metadados de modificação nos registros de estoque e precificação.
+                    </p>
+                  </div>
+
+                  <div className="border-l-2 border-emerald-500 pl-3">
+                    <h4 className="text-sm font-bold text-white mb-1">2. Armazenamento e Segurança da Informação</h4>
+                    <p>
+                      Todas as informações são armazenadas em infraestrutura de nuvem segura provida pelo Supabase, empregando criptografia em trânsito (protocolo TLS/SSL) e controles de acesso por chaves restritas. Senhas de acesso são protegidas e administradas exclusivamente pelo perfil gestor.
+                    </p>
+                  </div>
+
+                  <div className="border-l-2 border-emerald-500 pl-3">
+                    <h4 className="text-sm font-bold text-white mb-1">3. Não Compartilhamento com Terceiros</h4>
+                    <p>
+                      Nenhum dado cadastral ou comercial registrado no SunMaker é vendido, alugado, transferido ou compartilhado com plataformas externas para fins publicitários ou comerciais. Os registros pertencem unicamente à administração do estabelecimento contratante.
+                    </p>
+                  </div>
+
+                  <div className="border-l-2 border-emerald-500 pl-3">
+                    <h4 className="text-sm font-bold text-white mb-1">4. Conformidade com a Legislação (LGPD)</h4>
+                    <p>
+                      Em estrito cumprimento à Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018), os usuários têm o direito de confirmar a existência de tratamento de seus dados, solicitar a retificação de cadastros inconsistentes e requerer a exclusão de suas credenciais mediante solicitação formal ao administrador do sistema.
+                    </p>
+                  </div>
+
+                  <div className="border-l-2 border-emerald-500 pl-3">
+                    <h4 className="text-sm font-bold text-white mb-1">5. Retenção de Dados e Histórico Operacional</h4>
+                    <p>
+                      Os registros operacionais e históricos de preços permanecem armazenados pelo período necessário para atender a auditorias financeiras internas, cumprimento de obrigações tributárias e avaliação do ciclo comercial da empresa.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-neutral-950 border-t border-neutral-800 flex justify-between items-center">
+                  <span className="text-[11px] text-gray-500">
+                    Diretrizes de Privacidade e Proteção de Dados Pessoais
+                  </span>
+                  <button 
+                    onClick={() => setShowPrivacyModal(false)}
+                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                  >
+                    Confirmar Leitura e Fechar
                   </button>
                 </div>
               </motion.div>
@@ -1350,7 +1500,7 @@ export default function App() {
                       
                       <td className="p-4 font-mono text-sm">
                         {isEditing ? (
-                          <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2 py-1">
+                          <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2.5 py-1">
                             <span className="text-gray-400 text-xs mr-1">R$</span>
                             <input 
                               type="number" 
