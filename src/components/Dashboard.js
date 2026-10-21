@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Download, Trash2, TrendingUp, AlertCircle, Package, 
   Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap, 
-  Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key 
+  Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
+  BookOpen, Calculator, FileSpreadsheet, PhoneCall
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -19,6 +20,9 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
+
+  // Modais Institucionais e Suporte
+  const [showHelpModal, setShowHelpModal] = useState(false);
 
   // Modal de Gerenciamento de Usuarios
   const [showUsersModal, setShowUsersModal] = useState(false);
@@ -51,7 +55,6 @@ export default function App() {
     }
   }, []);
 
-  // --- AUTENTICACAO NO SUPABASE ---
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
@@ -94,7 +97,6 @@ export default function App() {
     setPassword('');
   };
 
-  // --- GERENCIAMENTO DE USUARIOS ---
   const fetchUsers = async () => {
     const { data } = await supabase.from('app_users').select('*').order('created_at', { ascending: false });
     if (data) setUsersList(data);
@@ -675,21 +677,115 @@ export default function App() {
             </form>
           </div>
 
+          {/* RODAPE INSTITUCIONAL */}
           <div className="bg-gray-50/80 p-5 px-8 border-t border-gray-100 space-y-2 text-xs text-gray-600">
-            <div className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors">
+            <div 
+              onClick={() => setShowHelpModal(true)}
+              className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors"
+            >
               <HelpCircle size={14} className="text-gray-400" />
               <span>Central de ajuda</span>
             </div>
-            <div className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors">
+            <div 
+              onClick={() => alert("Modulo de Termos de Uso em desenvolvimento.")}
+              className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors"
+            >
               <Info size={14} className="text-gray-400" />
               <span>Termos de uso</span>
             </div>
-            <div className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors">
+            <div 
+              onClick={() => alert("Modulo de Politica de Privacidade em desenvolvimento.")}
+              className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors"
+            >
               <FileText size={14} className="text-gray-400" />
               <span>Politica de privacidade</span>
             </div>
           </div>
         </motion.div>
+
+        {/* MODAL CENTRAL DE AJUDA NA TELA DE LOGIN */}
+        <AnimatePresence>
+          {showHelpModal && (
+            <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl text-white"
+              >
+                <div className="p-6 border-b border-neutral-800 flex justify-between items-center bg-black/40">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="text-amber-500" size={22} />
+                    <h3 className="text-lg font-bold text-white">Central de Ajuda - SunMaker</h3>
+                  </div>
+                  <button 
+                    onClick={() => setShowHelpModal(false)} 
+                    className="text-gray-400 hover:text-white p-1 rounded-lg"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="p-6 max-h-[75vh] overflow-y-auto space-y-5 text-sm">
+                  {/* Secao 1 */}
+                  <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
+                    <div className="flex items-center gap-2 text-amber-400 font-semibold mb-1.5">
+                      <FileSpreadsheet size={16} />
+                      <h4>Como importar relatorios do sistema Xpert</h4>
+                    </div>
+                    <p className="text-gray-300 text-xs leading-relaxed">
+                      1. No sistema Xpert, emita o relatorio de produtos em formato CSV.<br/>
+                      2. Acesse o painel do SunMaker e clique em "Upload Relatorio" no topo.<br/>
+                      3. O sistema processa automaticamente arquivos com milhares de itens em lotes continuos.
+                    </p>
+                  </div>
+
+                  {/* Secao 2 */}
+                  <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
+                    <div className="flex items-center gap-2 text-emerald-400 font-semibold mb-1.5">
+                      <Calculator size={16} />
+                      <h4>Definicao de precos e calculo automatico</h4>
+                    </div>
+                    <p className="text-gray-300 text-xs leading-relaxed">
+                      Ao inves de calcular porcentagens de cabeca, digite o preco final de venda (em R$) diretamente na coluna "Definir Preco" da tabela e pressione Enter. O sistema recalcula a margem e o lucro liquido do lote na hora.
+                    </p>
+                  </div>
+
+                  {/* Secao 3 */}
+                  <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
+                    <div className="flex items-center gap-2 text-blue-400 font-semibold mb-1.5">
+                      <Shield size={16} />
+                      <h4>Diferenca entre Markup e Margem Real</h4>
+                    </div>
+                    <p className="text-gray-300 text-xs leading-relaxed">
+                      O SunMaker le os cabecalhos do arquivo exportado e identifica automaticamente se os dados foram gerados como Markup (acrescimo sobre o custo) ou Margem Real (lucro sobre a venda), garantindo consistencia matematica com o sistema da loja.
+                    </p>
+                  </div>
+
+                  {/* Secao 4 */}
+                  <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
+                    <div className="flex items-center gap-2 text-red-400 font-semibold mb-1.5">
+                      <PhoneCall size={16} />
+                      <h4>Esquecimento de senha e suporte operacional</h4>
+                    </div>
+                    <p className="text-gray-300 text-xs leading-relaxed">
+                      Por motivos de seguranca interna, senhas nao sao resetadas publicamente. Caso esqueca sua credencial de acesso, solicite a um operador com perfil Administrador para redefinir sua senha diretamente na aba "Usuarios" do painel.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-neutral-950 border-t border-neutral-800 text-right">
+                  <button 
+                    onClick={() => setShowHelpModal(false)}
+                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
@@ -911,7 +1007,6 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Linha inline para digitar a nova senha */}
                         {editingPasswordUserId === u.id && (
                           <div className="mt-3 pt-3 border-t border-neutral-800 flex items-center gap-2">
                             <input 
