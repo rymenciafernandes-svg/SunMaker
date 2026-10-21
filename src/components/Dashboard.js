@@ -1,10 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Upload, Download, Trash2, TrendingUp, AlertCircle, Package, Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Upload, Download, Trash2, TrendingUp, AlertCircle, Package, 
+  Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap, 
+  Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
 
-export default function Dashboard() {
+// Imagem de fundo estilo rodovia/posto
+const LOGIN_BG_IMAGE = "https://images.unsplash.com/photo-1545459720-aac8509eb02c?q=80&w=1920&auto=format&fit=crop"; 
+
+export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // Estados de Login e Cadastro
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
+
+  // Modal de Gerenciamento de Usuários dentro do Dashboard
+  const [showUsersModal, setShowUsersModal] = useState(false);
+  const [usersList, setUsersList] = useState([]);
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserPass, setNewUserPass] = useState('');
+  const [newUserRole, setNewUserRole] = useState('operador');
+
+  // Estados do Dashboard
   const [products, setProducts] = useState([]);
   const [period, setPeriod] = useState('meses');
   const [uploading, setUploading] = useState(false);
@@ -13,12 +39,136 @@ export default function Dashboard() {
   const [selectedCategory, setSelectedCategory] = useState('todas');
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', category: '', stock: '', cost: '', margin: '', price: '' });
-  
   const [calculationMode, setCalculationMode] = useState('markup');
 
+  // Checar sessão ativa
   useEffect(() => {
-    fetchProducts();
+    const savedUser = localStorage.getItem('sunmaker_user');
+    if (savedUser) {
+      setCurrentUser(JSON.parse(savedUser));
+      setIsAuthenticated(true);
+      fetchProducts();
+    }
   }, []);
+
+  // --- AUTENTICAÇÃO NO SUPABASE ---
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthSuccess('');
+
+    const cleanUser = username.trim().toLowerCase();
+
+    // 1. Busca na tabela do Supabase
+    const { data, error } = await supabase
+      .from('app_users')
+      .select('*')
+      .ilike('username', cleanUser)
+      .eq('password', password)
+      .maybeSingle();
+
+    if (data) {
+      const userObj = { username: data.username, role: data.role || 'operador' };
+      localStorage.setItem('sunmaker_user', JSON.stringify(userObj));
+      setCurrentUser(userObj);
+      setIsAuthenticated(true);
+      fetchProducts();
+      return;
+    }
+
+    // 2. Fallback emergencial caso o banco esteja inacessível
+    if (cleanUser === 'admin' && password === 'copasul') {
+      const adminObj = { username: 'admin', role: 'admin' };
+      localStorage.setItem('sunmaker_user', JSON.stringify(adminObj));
+      setCurrentUser(adminObj);
+      setIsAuthenticated(true);
+      fetchProducts();
+      return;
+    }
+
+    setAuthError('Usuário ou senha incorretos.');
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthSuccess('');
+
+    const cleanUser = username.trim().toLowerCase();
+    if (cleanUser.length < 3) {
+      setAuthError('O nome de usuário deve ter pelo menos 3 caracteres.');
+      return;
+    }
+    if (password.length < 4) {
+      setAuthError('A senha deve ter pelo menos 4 caracteres.');
+      return;
+    }
+
+    const { error } = await supabase.from('app_users').insert([
+      { username: cleanUser, password: password, role: 'operador' }
+    ]);
+
+    if (error) {
+      if (error.code === '23505') {
+        setAuthError('Este nome de usuário já está cadastrado.');
+      } else {
+        setAuthError('Erro ao cadastrar usuário: ' + error.message);
+      }
+    } else {
+      setAuthSuccess('Usuário cadastrado com sucesso! Já pode fazer login.');
+      setIsRegisterMode(false);
+      setPassword('');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('sunmaker_user');
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    setUsername('');
+    setPassword('');
+  };
+
+  // --- GERENCIAMENTO DE USUÁRIOS NO DASHBOARD ---
+  const fetchUsers = async () => {
+    const { data } = await supabase.from('app_users').select('*').order('created_at', { ascending: false });
+    if (data) setUsersList(data);
+  };
+
+  const handleOpenUsersModal = () => {
+    fetchUsers();
+    setShowUsersModal(true);
+  };
+
+  const handleCreateNewUser = async (e) => {
+    e.preventDefault();
+    const cleanUser = newUserName.trim().toLowerCase();
+    if (!cleanUser || !newUserPass) return;
+
+    const { error } = await supabase.from('app_users').insert([
+      { username: cleanUser, password: newUserPass, role: newUserRole }
+    ]);
+
+    if (error) {
+      alert("Erro ao cadastrar: " + (error.code === '23505' ? 'Nome de usuário já existe.' : error.message));
+    } else {
+      alert(`Usuário "${cleanUser}" cadastrado com sucesso!`);
+      setNewUserName('');
+      setNewUserPass('');
+      fetchUsers();
+    }
+  };
+
+  const handleDeleteUser = async (id, userToDelete) => {
+    if (userToDelete === 'admin') {
+      alert("Não é possível excluir o administrador padrão.");
+      return;
+    }
+    if (!window.confirm(`Tem certeza de que deseja remover o acesso de "${userToDelete}"?`)) return;
+
+    await supabase.from('app_users').delete().eq('id', id);
+    fetchUsers();
+  };
 
   const fetchProducts = async () => {
     try {
@@ -35,7 +185,6 @@ export default function Dashboard() {
     }
   };
 
-  // --- DEFINIR PREÇO SUGERIDO E CALCULAR MARGEM AUTOMATICAMENTE ---
   const handleSetPrice = async (id, priceValue) => {
     const rawPrice = String(priceValue).replace('R$', '').replace(/\s/g, '').replace(',', '.');
     const price = parseFloat(rawPrice);
@@ -156,7 +305,6 @@ export default function Dashboard() {
     setUploadProgress('');
   };
 
-  // --- CONTROLE DE EDIÇÃO SINCRONIZADA (PREÇO x MARGEM) ---
   const startEditing = (product) => {
     setEditingId(product.id);
     const cost = Number(product.cost) || 0;
@@ -456,6 +604,128 @@ export default function Dashboard() {
     }
   };
 
+  // ==========================================
+  // RENDERIZAÇÃO: TELA DE LOGIN (ESTILO VIBRA)
+  // ==========================================
+  if (!isAuthenticated) {
+    return (
+      <div 
+        className="min-h-screen w-full flex items-center justify-start p-6 md:p-16 lg:p-24 relative bg-cover bg-center"
+        style={{ backgroundImage: `url("${LOGIN_BG_IMAGE}")` }}
+      >
+        <div className="absolute inset-0 bg-black/45 backdrop-blur-[1px]" />
+
+        <motion.div 
+          initial={{ opacity: 0, x: -40 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5 }}
+          className="relative z-10 w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-100 flex flex-col justify-between"
+        >
+          <div className="p-8 pb-6">
+            <div className="pb-5 border-b border-gray-200 mb-6 flex justify-between items-center">
+              <div>
+                <h1 className="text-3xl font-black italic tracking-tighter text-amber-500">
+                  SunMaker
+                </h1>
+                <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase mt-0.5">
+                  {isRegisterMode ? 'Cadastro de Novo Login' : 'Portal de Inteligência'}
+                </p>
+              </div>
+            </div>
+
+            {authError && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-4 p-2.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-medium text-center">
+                {authError}
+              </motion.div>
+            )}
+
+            {authSuccess && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-4 p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-medium text-center">
+                {authSuccess}
+              </motion.div>
+            )}
+
+            <form onSubmit={isRegisterMode ? handleRegister : handleLogin} className="space-y-4">
+              <div>
+                <input 
+                  type="text"
+                  placeholder="Nome de Usuário"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full bg-gray-100 text-gray-800 text-sm px-4 py-3 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
+                  required
+                />
+              </div>
+
+              <div className="relative">
+                <input 
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Senha de Acesso"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-blue-50/50 text-gray-800 text-sm px-4 py-3 pr-11 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
+                  required
+                />
+                <button 
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800 transition-colors"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+
+              <button 
+                type="submit"
+                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3 rounded-lg text-sm tracking-wide shadow-md hover:shadow-lg transition-all"
+              >
+                {isRegisterMode ? 'Criar Acesso' : 'Acessar'}
+              </button>
+
+              <div className="flex justify-between items-center text-xs pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setIsRegisterMode(!isRegisterMode); setAuthError(''); setAuthSuccess(''); }}
+                  className="text-amber-600 hover:text-amber-700 font-semibold"
+                >
+                  {isRegisterMode ? '← Voltar para Login' : '+ Cadastrar novo usuário'}
+                </button>
+
+                {!isRegisterMode && (
+                  <a 
+                    href="#" 
+                    onClick={(e) => { e.preventDefault(); alert("Entre em contato com o administrador do posto para resetar a sua senha."); }}
+                    className="text-blue-600 hover:text-blue-800 underline font-medium"
+                  >
+                    Recuperação de senha
+                  </a>
+                )}
+              </div>
+            </form>
+          </div>
+
+          <div className="bg-gray-50/80 p-5 px-8 border-t border-gray-100 space-y-2 text-xs text-gray-600">
+            <div className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors">
+              <HelpCircle size={14} className="text-gray-400" />
+              <span>Central de ajuda</span>
+            </div>
+            <div className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors">
+              <Info size={14} className="text-gray-400" />
+              <span>Termos de uso</span>
+            </div>
+            <div className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors">
+              <FileText size={14} className="text-gray-400" />
+              <span>Política de privacidade</span>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // RENDERIZAÇÃO: DASHBOARD PRINCIPAL
+  // ==========================================
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans text-white">
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8 border-b border-gray-800 pb-6 no-print">
@@ -467,12 +737,18 @@ export default function Dashboard() {
           >
             SunMaker
           </motion.h1>
-          <p className="text-gray-400 mt-1 text-sm flex items-center gap-2">
-            Dashboard de Inteligência
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-gray-400 text-sm">Dashboard de Inteligência</p>
             <span className="bg-neutral-800 px-2 py-0.5 rounded text-[10px] uppercase text-amber-500 font-bold tracking-wider">
               {calculationMode === 'markup' ? 'Modo: Markup' : 'Modo: Margem Real'}
             </span>
-          </p>
+            {currentUser && (
+              <span className="bg-emerald-950/60 text-emerald-400 border border-emerald-900/50 px-2 py-0.5 rounded text-[10px] font-medium flex items-center gap-1">
+                <Shield size={10} />
+                {currentUser.username}
+              </span>
+            )}
+          </div>
         </div>
         
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
@@ -533,8 +809,130 @@ export default function Dashboard() {
             <Download size={16} />
             Exportar PDF
           </button>
+
+          {/* BOTÃO GERENCIAR USUÁRIOS */}
+          <button 
+            onClick={handleOpenUsersModal}
+            className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-amber-400 font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm"
+            title="Gerenciar e cadastrar logins"
+          >
+            <Users size={16} />
+            Usuários
+          </button>
+
+          {/* Botão Sair */}
+          <button 
+            onClick={handleLogout}
+            className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm"
+            title="Encerrar sessão"
+          >
+            <LogOut size={16} className="text-gray-400" />
+            Sair
+          </button>
         </div>
       </header>
+
+      {/* MODAL DE GERENCIAMENTO DE USUÁRIOS */}
+      <AnimatePresence>
+        {showUsersModal && (
+          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl"
+            >
+              <div className="p-6 border-b border-neutral-800 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <Users className="text-amber-500" size={20} />
+                  <h3 className="text-lg font-bold text-white">Controle de Usuários e Logins</h3>
+                </div>
+                <button onClick={() => setShowUsersModal(false)} className="text-gray-400 hover:text-white p-1 rounded-lg">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Formulário Novo Usuário */}
+                <form onSubmit={handleCreateNewUser} className="bg-black/40 border border-neutral-800 p-4 rounded-xl space-y-3">
+                  <p className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <UserPlus size={14} className="text-emerald-400" />
+                    Cadastrar Novo Acesso
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input 
+                      type="text" 
+                      placeholder="Login (Ex: caixa1, gerente)" 
+                      value={newUserName}
+                      onChange={(e) => setNewUserName(e.target.value)}
+                      className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500"
+                      required
+                    />
+                    <input 
+                      type="password" 
+                      placeholder="Senha" 
+                      value={newUserPass}
+                      onChange={(e) => setNewUserPass(e.target.value)}
+                      className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500"
+                      required
+                    />
+                  </div>
+                  <div className="flex justify-between items-center pt-1">
+                    <select
+                      value={newUserRole}
+                      onChange={(e) => setNewUserRole(e.target.value)}
+                      className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-gray-300 outline-none"
+                    >
+                      <option value="operador">Perfil: Operador</option>
+                      <option value="admin">Perfil: Administrador</option>
+                    </select>
+
+                    <button 
+                      type="submit"
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1"
+                    >
+                      Salvar Novo Login
+                    </button>
+                  </div>
+                </form>
+
+                {/* Lista de Usuários Ativos */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    Logins Cadastrados ({usersList.length})
+                  </p>
+                  <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                    {usersList.map(u => (
+                      <div key={u.id} className="flex justify-between items-center bg-neutral-950 p-3 rounded-lg border border-neutral-800">
+                        <div>
+                          <p className="text-sm font-semibold text-white flex items-center gap-2">
+                            {u.username}
+                            <span className="text-[10px] bg-neutral-800 text-gray-400 px-2 py-0.5 rounded capitalize">
+                              {u.role || 'operador'}
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-gray-500">
+                            Cadastrado em: {new Date(u.created_at).toLocaleDateString('pt-BR')}
+                          </p>
+                        </div>
+                        {u.username !== 'admin' && (
+                          <button 
+                            onClick={() => handleDeleteUser(u.id, u.username)}
+                            className="p-1.5 text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                            title="Remover acesso deste usuário"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <motion.div 
         initial={{ opacity: 0 }} 
