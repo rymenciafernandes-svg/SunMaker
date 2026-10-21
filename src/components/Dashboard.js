@@ -87,7 +87,7 @@ export default function App() {
       return;
     }
 
-    setAuthError('Usuario ou senha incorretos.');
+    setAuthError('Usuário ou senha incorretos.');
   };
 
   const handleLogout = () => {
@@ -118,9 +118,9 @@ export default function App() {
     ]);
 
     if (error) {
-      alert("Erro ao cadastrar: " + (error.code === '23505' ? 'Nome de usuario ja existe.' : error.message));
+      alert("Erro ao cadastrar: " + (error.code === '23505' ? 'Nome de usuário já existe.' : error.message));
     } else {
-      alert(`Usuario "${cleanUser}" cadastrado com sucesso.`);
+      alert(`Usuário "${cleanUser}" cadastrado com sucesso.`);
       setNewUserName('');
       setNewUserPass('');
       fetchUsers();
@@ -129,7 +129,7 @@ export default function App() {
 
   const handleUpdateUserPassword = async (id, targetUser) => {
     if (!updatedPasswordValue || updatedPasswordValue.trim().length < 4) {
-      alert("A nova senha deve ter no minimo 4 caracteres.");
+      alert("A nova senha deve ter no mínimo 4 caracteres.");
       return;
     }
 
@@ -141,7 +141,7 @@ export default function App() {
     if (error) {
       alert("Erro ao alterar senha: " + error.message);
     } else {
-      alert(`Senha do usuario "${targetUser}" redefinida com sucesso.`);
+      alert(`Senha do usuário "${targetUser}" redefinida com sucesso.`);
       setEditingPasswordUserId(null);
       setUpdatedPasswordValue('');
       fetchUsers();
@@ -150,10 +150,10 @@ export default function App() {
 
   const handleDeleteUser = async (id, userToDelete) => {
     if (userToDelete === 'admin') {
-      alert("Nao e permitido excluir o administrador padrao.");
+      alert("Não é permitido excluir o administrador padrão.");
       return;
     }
-    if (!window.confirm(`Confirma a remocao do acesso de "${userToDelete}"?`)) return;
+    if (!window.confirm(`Confirma a remoção do acesso de "${userToDelete}"?`)) return;
 
     await supabase.from('app_users').delete().eq('id', id);
     fetchUsers();
@@ -229,7 +229,7 @@ export default function App() {
   };
 
   const handleClearAllData = async () => {
-    const confirm = window.confirm('ATENCAO: Deseja apagar todos os produtos da base de dados?');
+    const confirm = window.confirm('ATENÇÃO: Deseja apagar todos os produtos da base de dados?');
     
     if (confirm) {
       setUploading(true);
@@ -243,7 +243,7 @@ export default function App() {
           alert("Erro: " + error.message);
           fetchProducts(); 
         } else {
-          alert("Base limpa com sucesso.");
+          alert("Base de dados limpa com sucesso.");
         }
       } catch (err) {
         fetchProducts();
@@ -284,7 +284,7 @@ export default function App() {
         }
       }
 
-      alert(`Margem de 50% aplicada em todos os ${products.length} produtos.`);
+      alert(`Margem de 50% aplicada com sucesso em todos os ${products.length} produtos.`);
     } catch (err) {
       console.error("Erro ao aplicar 50%:", err);
       fetchProducts();
@@ -488,7 +488,7 @@ export default function App() {
           }
 
           if (parsedProducts.length === 0) {
-            alert("Nenhum dado compativel encontrado no relatorio.");
+            alert("Nenhum dado compatível encontrado no relatório.");
             setUploading(false);
             setUploadProgress('');
             return;
@@ -514,7 +514,7 @@ export default function App() {
           }
 
           if (!hasError) {
-             alert(`${successCount} produtos importados (${detectedMode === 'markup' ? 'Modo Markup' : 'Modo Margem'}).`);
+             alert(`${successCount} produtos importados (${detectedMode === 'markup' ? 'Modo Markup' : 'Modo Margem Real'}).`);
           }
           
           fetchProducts();
@@ -523,7 +523,7 @@ export default function App() {
           e.target.value = '';
         },
         error: () => {
-          alert("Erro ao ler arquivo CSV.");
+          alert("Erro ao ler o arquivo CSV.");
           setUploading(false);
           setUploadProgress('');
         }
@@ -616,7 +616,7 @@ export default function App() {
                 SunMaker
               </h1>
               <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase mt-0.5">
-                Portal de Inteligencia
+                Portal de Inteligência
               </p>
             </div>
 
@@ -630,7 +630,7 @@ export default function App() {
               <div>
                 <input 
                   type="text"
-                  placeholder="Nome de Usuario"
+                  placeholder="Nome de Usuário"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full bg-gray-100 text-gray-800 text-sm px-4 py-3 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
@@ -668,11 +668,11 @@ export default function App() {
                   href="#" 
                   onClick={(e) => { 
                     e.preventDefault(); 
-                    alert("Para redefinir sua senha, solicite ao administrador do sistema para alterar seus dados no painel de Usuarios."); 
+                    alert("Para redefinir sua senha, solicite ao administrador do sistema para alterar seus dados no painel de Usuários."); 
                   }}
                   className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
                 >
-                  Recuperacao de senha
+                  Recuperação de senha
                 </a>
               </div>
             </form>
@@ -695,11 +695,11 @@ export default function App() {
               <span>Termos de uso</span>
             </div>
             <div 
-              onClick={() => alert("Modulo de Politica de Privacidade em desenvolvimento.")}
+              onClick={() => alert("Módulo de Política de Privacidade em desenvolvimento.")}
               className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors"
             >
               <FileText size={14} className="text-gray-400" />
-              <span>Politica de privacidade</span>
+              <span>Política de privacidade</span>
             </div>
           </div>
         </motion.div>
@@ -731,32 +731,32 @@ export default function App() {
                   <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
                     <div className="flex items-center gap-2 text-amber-400 font-semibold mb-1.5">
                       <FileSpreadsheet size={16} />
-                      <h4>Como importar relatorios do sistema Xpert</h4>
+                      <h4>Como importar relatórios do sistema Xpert</h4>
                     </div>
                     <p className="text-gray-300 text-xs leading-relaxed">
-                      1. No sistema de gestao (Xpert ou compativel), emita o relatorio de produtos em formato CSV.<br/>
-                      2. Acesse o painel do SunMaker e clique em "Upload Relatorio" no topo.<br/>
-                      3. O sistema processa automaticamente arquivos com milhares de itens em lotes continuos.
+                      1. No sistema de gestão (Xpert ou compatível), emita o relatório de produtos em formato CSV.<br/>
+                      2. Acesse o painel do SunMaker e clique em "Upload Relatório" no topo.<br/>
+                      3. O sistema processa automaticamente arquivos com milhares de itens em lotes contínuos.
                     </p>
                   </div>
 
                   <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
                     <div className="flex items-center gap-2 text-emerald-400 font-semibold mb-1.5">
                       <Calculator size={16} />
-                      <h4>Definicao de precos e calculo automatico</h4>
+                      <h4>Definição de preços e cálculo automático</h4>
                     </div>
                     <p className="text-gray-300 text-xs leading-relaxed">
-                      Ao inves de calcular porcentagens de cabeca, digite o preco final de venda (em R$) diretamente na coluna "Definir Preco" da tabela e pressione Enter. O sistema recalcula a margem e o lucro liquido do lote na hora.
+                      Ao invés de calcular porcentagens de cabeça, digite o preço final de venda (em R$) diretamente na coluna "Definir Preço" da tabela e pressione Enter. O sistema recalcula a margem e o lucro líquido do lote na hora.
                     </p>
                   </div>
 
                   <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
                     <div className="flex items-center gap-2 text-blue-400 font-semibold mb-1.5">
                       <Shield size={16} />
-                      <h4>Diferenca entre Markup e Margem Real</h4>
+                      <h4>Diferença entre Markup e Margem Real</h4>
                     </div>
                     <p className="text-gray-300 text-xs leading-relaxed">
-                      O SunMaker le os cabecalhos do arquivo exportado e identifica automaticamente se os dados foram gerados como Markup (acrescimo sobre o custo) ou Margem Real (lucro sobre a venda), garantindo consistencia matematica com o sistema do estabelecimento.
+                      O SunMaker lê os cabeçalhos do arquivo exportado e identifica automaticamente se os dados foram gerados como Markup (acréscimo sobre o custo) ou Margem Real (lucro sobre a venda), garantindo consistência matemática com o sistema do estabelecimento.
                     </p>
                   </div>
 
@@ -766,7 +766,7 @@ export default function App() {
                       <h4>Esquecimento de senha e suporte operacional</h4>
                     </div>
                     <p className="text-gray-300 text-xs leading-relaxed">
-                      Por motivos de seguranca interna, senhas nao sao resetadas publicamente. Caso esqueca sua credencial de acesso, solicite a um operador com perfil Administrador para redefinir sua senha diretamente na aba "Usuarios" do painel.
+                      Por motivos de segurança interna, senhas não são redefinidas publicamente. Caso esqueça sua credencial de acesso, solicite a um operador com perfil Administrador para redefinir sua senha diretamente na aba "Usuários" do painel.
                     </p>
                   </div>
                 </div>
@@ -784,7 +784,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* MODAL TERMOS DE USO (GENERICO / COMERCIAL) */}
+        {/* MODAL TERMOS DE USO */}
         <AnimatePresence>
           {showTermsModal && (
             <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
@@ -811,42 +811,42 @@ export default function App() {
                   <div className="border-l-2 border-amber-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">1. Objeto e Finalidade</h4>
                     <p>
-                      A plataforma SunMaker e uma ferramenta de uso corporativo desenvolvida para gestao de precos, sincronizacao de relatorios e analise de rentabilidade em operacoes de varejo e distribuicao comercial. O acesso e restrito a colaboradores e usuarios devidamente autorizados pela administracao do estabelecimento.
+                      A plataforma SunMaker é uma ferramenta de uso corporativo desenvolvida para gestão de preços, sincronização de relatórios e análise de rentabilidade em operações de varejo e distribuição comercial. O acesso é restrito a colaboradores e usuários devidamente autorizados pela administração do estabelecimento.
                     </p>
                   </div>
 
                   <div className="border-l-2 border-amber-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">2. Confidencialidade Comercial</h4>
                     <p>
-                      Todos os dados contidos na plataforma, incluindo custos de aquisicao de produtos, margens praticadas, estoque fisico e projecoes de lucratividade, constituem informacoes confidenciais e segredo comercial. E terminantemente proibida a extracao, copia ou repasse desses registros para terceiros nao autorizados.
+                      Todos os dados contidos na plataforma, incluindo custos de aquisição de produtos, margens praticadas, estoque físico e projeções de lucratividade, constituem informações confidenciais e segredo comercial. É terminantemente proibida a extração, cópia ou repasse desses registros para terceiros não autorizados.
                     </p>
                   </div>
 
                   <div className="border-l-2 border-amber-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">3. Responsabilidade pelas Credenciais</h4>
                     <p>
-                      Cada operador e responsavel pela seguranca de seu login e senha. Quaisquer acoes executadas na base de dados (atualizacao de precos, definicao de margens ou exclusao de cadastros) serao registradas e vinculadas a conta autenticada no momento da operacao.
+                      Cada operador é responsável pela segurança de seu login e senha. Quaisquer ações executadas na base de dados (atualização de preços, definição de margens ou exclusão de cadastros) serão registradas e vinculadas à conta autenticada no momento da operação.
                     </p>
                   </div>
 
                   <div className="border-l-2 border-amber-500 pl-3">
-                    <h4 className="text-sm font-bold text-white mb-1">4. Integridade das Operacoes</h4>
+                    <h4 className="text-sm font-bold text-white mb-1">4. Integridade das Operações</h4>
                     <p>
-                      O usuario compromete-se a conferir a integridade dos relatorios importados e dos valores aplicados na tabela, ciente de que a precificacao incorreta reflete diretamente no faturamento e nos resultados financeiros do negocio.
+                      O usuário compromete-se a conferir a integridade dos relatórios importados e dos valores aplicados na tabela, ciente de que a precificação incorreta reflete diretamente no faturamento e nos resultados financeiros do negócio.
                     </p>
                   </div>
 
                   <div className="border-l-2 border-amber-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">5. Auditoria e Encerramento de Acesso</h4>
                     <p>
-                      A administracao reserva-se o direito de monitorar o uso da ferramenta, redefinir senhas, alterar niveis de permissao (Operador ou Administrador) e revogar acessos de usuarios inativos, desligados ou que descumpram as diretrizes de seguranca.
+                      A administração reserva-se o direito de monitorar o uso da ferramenta, redefinir senhas, alterar níveis de permissão (Operador ou Administrador) e revogar acessos de usuários inativos, desligados ou que descumpram as diretrizes de segurança.
                     </p>
                   </div>
                 </div>
 
                 <div className="p-4 bg-neutral-950 border-t border-neutral-800 flex justify-between items-center">
                   <span className="text-[11px] text-gray-500">
-                    Termos e Condicoes Gerais de Uso da Plataforma
+                    Termos e Condições Gerais de Uso da Plataforma
                   </span>
                   <button 
                     onClick={() => setShowTermsModal(false)}
@@ -878,7 +878,7 @@ export default function App() {
             SunMaker
           </motion.h1>
           <div className="flex items-center gap-2 mt-1">
-            <p className="text-gray-400 text-sm">Dashboard de Inteligencia</p>
+            <p className="text-gray-400 text-sm">Dashboard de Inteligência</p>
             <span className="bg-neutral-800 px-2 py-0.5 rounded text-[10px] uppercase text-amber-500 font-bold tracking-wider">
               {calculationMode === 'markup' ? 'Modo: Markup' : 'Modo: Margem Real'}
             </span>
@@ -896,7 +896,7 @@ export default function App() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
             <input 
               type="text" 
-              placeholder="Pesquisar produto ou codigo..."
+              placeholder="Pesquisar produto ou código..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-neutral-900 border border-neutral-700 text-white pl-9 pr-3 py-2 rounded-lg text-sm outline-none focus:border-amber-500 transition-colors"
@@ -919,7 +919,7 @@ export default function App() {
 
           <label className="cursor-pointer bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium">
             <Upload size={16} />
-            <span>{uploading && uploadProgress !== '' ? uploadProgress : "Upload Relatorio"}</span>
+            <span>{uploading && uploadProgress !== '' ? uploadProgress : "Upload Relatório"}</span>
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading} />
           </label>
 
@@ -956,13 +956,13 @@ export default function App() {
             title="Gerenciar e cadastrar logins"
           >
             <Users size={16} />
-            Usuarios
+            Usuários
           </button>
 
           <button 
             onClick={handleLogout}
             className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm"
-            title="Encerrar sessao"
+            title="Encerrar sessão"
           >
             <LogOut size={16} className="text-gray-400" />
             Sair
@@ -983,7 +983,7 @@ export default function App() {
               <div className="p-6 border-b border-neutral-800 flex justify-between items-center">
                 <div className="flex items-center gap-2">
                   <Users className="text-amber-500" size={20} />
-                  <h3 className="text-lg font-bold text-white">Controle de Usuarios e Logins</h3>
+                  <h3 className="text-lg font-bold text-white">Controle de Usuários e Logins</h3>
                 </div>
                 <button onClick={() => setShowUsersModal(false)} className="text-gray-400 hover:text-white p-1 rounded-lg">
                   <X size={18} />
@@ -1064,7 +1064,7 @@ export default function App() {
                                 }
                               }}
                               className="p-1.5 text-amber-400 hover:bg-amber-400/10 rounded transition-colors"
-                              title="Redefinir senha deste usuario"
+                              title="Redefinir senha deste usuário"
                             >
                               <Key size={16} />
                             </button>
@@ -1072,7 +1072,7 @@ export default function App() {
                               <button 
                                 onClick={() => handleDeleteUser(u.id, u.username)}
                                 className="p-1.5 text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                                title="Remover acesso deste usuario"
+                                title="Remover acesso deste usuário"
                               >
                                 <Trash2 size={16} />
                               </button>
@@ -1084,7 +1084,7 @@ export default function App() {
                           <div className="mt-3 pt-3 border-t border-neutral-800 flex items-center gap-2">
                             <input 
                               type="password"
-                              placeholder="Nova senha (min. 4 digitos)"
+                              placeholder="Nova senha (min. 4 dígitos)"
                               value={updatedPasswordValue}
                               onChange={(e) => setUpdatedPasswordValue(e.target.value)}
                               className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2.5 py-1 text-xs text-white outline-none focus:border-amber-500"
@@ -1120,21 +1120,21 @@ export default function App() {
         className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-neutral-900 p-5 rounded-2xl border border-neutral-800"
       >
         <div className="flex items-center gap-4 no-print">
-          <span className="text-gray-300 font-medium text-sm">Estimativa de Periodo:</span>
+          <span className="text-gray-300 font-medium text-sm">Estimativa de Período:</span>
           <select 
             value={period} 
             onChange={(e) => setPeriod(e.target.value)}
             className="bg-black border border-neutral-700 text-white rounded-md px-3 py-1.5 text-sm outline-none focus:border-amber-500 cursor-pointer"
           >
-            <option value="dias">Dias (Giro Diario)</option>
+            <option value="dias">Dias (Giro Diário)</option>
             <option value="semanas">Semanas (Giro Semanal)</option>
             <option value="meses">Meses (Giro Mensal do Lote)</option>
-            <option value="anos">Anos (Projecao Anual)</option>
+            <option value="anos">Anos (Projeção Anual)</option>
           </select>
         </div>
         <div className="text-left md:text-right">
           <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold no-print">
-            Projecao Estimada de Lucro ({period}):
+            Projeção Estimada de Lucro ({period}):
           </p>
           <p className="text-2xl font-black text-emerald-400">
             R$ {getPeriodProfit().toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1220,9 +1220,9 @@ export default function App() {
                 <th className="p-4 text-center">Estoque</th>
                 <th className="p-4">Custo Base</th>
                 <th className="p-4">Margem (%)</th>
-                <th className="p-4">Preco Sugerido</th>
+                <th className="p-4">Preço Sugerido</th>
                 <th className="p-4 text-emerald-400">Lucro do Lote</th>
-                <th className="p-4 no-print text-center">Definir Preco</th>
+                <th className="p-4 no-print text-center">Definir Preço</th>
               </tr>
             </thead>
             <tbody>
@@ -1350,7 +1350,7 @@ export default function App() {
                       
                       <td className="p-4 font-mono text-sm">
                         {isEditing ? (
-                          <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2.5 py-1">
+                          <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2 py-1">
                             <span className="text-gray-400 text-xs mr-1">R$</span>
                             <input 
                               type="number" 
@@ -1387,7 +1387,7 @@ export default function App() {
                           </div>
                         ) : (
                           <div className="flex items-center justify-center gap-2">
-                            <div className="flex items-center bg-black border border-neutral-700 rounded px-2 py-1 focus-within:border-amber-500 transition-colors" title="Digite o Preco Sugerido em R$ e aperte Enter">
+                            <div className="flex items-center bg-black border border-neutral-700 rounded px-2 py-1 focus-within:border-amber-500 transition-colors" title="Digite o Preço Sugerido em R$ e aperte Enter">
                               <span className="text-gray-500 text-xs mr-1 font-semibold">R$</span>
                               <input 
                                 type="number" 
