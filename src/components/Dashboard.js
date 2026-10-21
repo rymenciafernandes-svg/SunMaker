@@ -5,7 +5,7 @@ import {
   Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap, 
   Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
   BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, Lock, Building2,
-  Settings, Sliders, Printer, Camera, User
+  Settings, Sliders, Printer, Camera, User, PlusCircle, ArrowLeft
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -21,6 +21,14 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
+
+  // Estados do Cadastro de Nova Empresa (Autoatendimento)
+  const [isRegisteringCompany, setIsRegisteringCompany] = useState(false);
+  const [companyName, setCompanyName] = useState('');
+  const [companyPhone, setCompanyPhone] = useState('');
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
 
   // Modais Institucionais
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -110,9 +118,11 @@ export default function App() {
     setShowPrivacyModal(true);
   };
 
+  // --- LOGIN TRADICIONAL ---
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
+    setAuthSuccess('');
 
     if (!readHelp || !readTerms || !readPrivacy) {
       const pendencias = [];
@@ -156,6 +166,93 @@ export default function App() {
     }
 
     setAuthError('Usuário ou senha incorretos.');
+  };
+
+  // --- CADASTRO AUTOMÁTICO DE NOVA EMPRESA ---
+  const handleRegisterCompany = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthSuccess('');
+
+    if (!readHelp || !readTerms || !readPrivacy) {
+      const pendencias = [];
+      if (!readHelp) pendencias.push("Central de ajuda");
+      if (!readTerms) pendencias.push("Termos de uso");
+      if (!readPrivacy) pendencias.push("Política de privacidade");
+      setAuthError(`É obrigatório ler e concordar com os documentos no rodapé antes de cadastrar a empresa: ${pendencias.join(', ')}.`);
+      return;
+    }
+
+    const cleanCompName = companyName.trim();
+    const cleanAdminUser = adminUsername.trim().toLowerCase();
+    const cleanPhone = companyPhone.trim();
+
+    if (cleanCompName.length < 3) {
+      setAuthError('O nome da empresa deve conter pelo menos 3 caracteres.');
+      return;
+    }
+    if (cleanAdminUser.length < 3) {
+      setAuthError('O usuário administrador deve conter pelo menos 3 caracteres.');
+      return;
+    }
+    if (adminPassword.length < 4) {
+      setAuthError('A senha de acesso deve ter no mínimo 4 caracteres.');
+      return;
+    }
+
+    // Geração de identificador exclusivo (slug com sufixo aleatório)
+    const baseSlug = cleanCompName
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const generatedCompanyId = `${baseSlug || 'empresa'}-${randomSuffix}`;
+
+    // 1. Grava a nova empresa
+    const { error: companyError } = await supabase.from('companies').insert([
+      {
+        company_id: generatedCompanyId,
+        company_name: cleanCompName,
+        contact_phone: cleanPhone,
+        status: 'ativo'
+      }
+    ]);
+
+    if (companyError) {
+      setAuthError('Erro ao cadastrar empresa: ' + companyError.message);
+      return;
+    }
+
+    // 2. Grava o usuário administrador vinculado à nova empresa
+    const { error: userError } = await supabase.from('app_users').insert([
+      {
+        username: cleanAdminUser,
+        password: adminPassword,
+        role: 'admin',
+        company_id: generatedCompanyId
+      }
+    ]);
+
+    if (userError) {
+      setAuthError('Erro ao criar usuário administrador: ' + userError.message);
+      return;
+    }
+
+    // Sucesso e login imediato da nova empresa
+    const newUserObj = {
+      username: cleanAdminUser,
+      role: 'admin',
+      company_id: generatedCompanyId,
+      avatar_url: null
+    };
+
+    localStorage.setItem('sunmaker_user', JSON.stringify(newUserObj));
+    setCurrentUser(newUserObj);
+    setIsAuthenticated(true);
+    fetchProducts(generatedCompanyId);
   };
 
   const handleLogout = () => {
@@ -446,12 +543,12 @@ export default function App() {
     setUploading(true);
     setUploadProgress(`Aplicando ${margin}% em todos os produtos...`);
 
-    setProducts(products.map(p => ({ ...p, margin, is_new: false })));
+    setProducts(products.map(p => ({ ...p, margin: 50, is_new: false })));
 
     try {
       const { error } = await supabase
         .from('products')
-        .update({ margin, is_new: false })
+        .update({ margin: 50, is_new: false })
         .eq('company_id', currentUser.company_id);
 
       if (error) {
@@ -463,7 +560,7 @@ export default function App() {
           const batchIds = idsToUpdate.slice(i, i + 200);
           await supabase
             .from('products')
-            .update({ margin, is_new: false })
+            .update({ margin: 50, is_new: false })
             .in('id', batchIds)
             .eq('company_id', currentUser.company_id);
         }
@@ -797,7 +894,7 @@ export default function App() {
   };
 
   // ==========================================
-  // TELA DE LOGIN
+  // TELA DE LOGIN & CADASTRO DE EMPRESA
   // ==========================================
   if (!isAuthenticated) {
     return (
@@ -819,7 +916,7 @@ export default function App() {
                 SunMaker
               </h1>
               <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase mt-0.5">
-                Portal de Inteligência
+                {isRegisteringCompany ? "Nova Empresa - Autoatendimento" : "Portal de Inteligência"}
               </p>
             </div>
 
@@ -829,56 +926,149 @@ export default function App() {
               </motion.div>
             )}
 
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <input 
-                  type="text"
-                  placeholder="Nome de Usuário"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-gray-100 text-gray-800 text-sm px-4 py-3 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
-                  required
-                />
-              </div>
+            {authSuccess && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-4 p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-medium text-center leading-relaxed">
+                {authSuccess}
+              </motion.div>
+            )}
 
-              <div className="relative">
-                <input 
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Senha de Acesso"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-blue-50/50 text-gray-800 text-sm px-4 py-3 pr-11 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
-                  required
-                />
+            {!isRegisteringCompany ? (
+              // FORMULÁRIO DE LOGIN CONVENCIONAL
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <input 
+                    type="text"
+                    placeholder="Nome de Usuário"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="w-full bg-gray-100 text-gray-800 text-sm px-4 py-3 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
+                    required
+                  />
+                </div>
+
+                <div className="relative">
+                  <input 
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Senha de Acesso"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-blue-50/50 text-gray-800 text-sm px-4 py-3 pr-11 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
+                    required
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800 transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+
                 <button 
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800 transition-colors"
+                  type="submit"
+                  className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3 rounded-lg text-sm tracking-wide shadow-md hover:shadow-lg transition-all cursor-pointer"
                 >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  Acessar
                 </button>
-              </div>
 
-              <button 
-                type="submit"
-                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3 rounded-lg text-sm tracking-wide shadow-md hover:shadow-lg transition-all"
-              >
-                Acessar
-              </button>
+                <div className="flex justify-between items-center text-xs pt-2">
+                  <button
+                    type="button"
+                    onClick={() => { setIsRegisteringCompany(true); setAuthError(''); }}
+                    className="text-amber-600 hover:text-amber-700 font-bold cursor-pointer"
+                  >
+                    + Cadastrar nova empresa
+                  </button>
 
-              <div className="text-left pt-2">
-                <a 
-                  href="#" 
-                  onClick={(e) => { 
-                    e.preventDefault(); 
-                    alert("Para redefinir sua senha, solicite ao administrador do sistema para alterar seus dados no painel de Usuários."); 
-                  }}
-                  className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
+                  <a 
+                    href="#" 
+                    onClick={(e) => { 
+                      e.preventDefault(); 
+                      alert("Para redefinir sua senha, solicite ao administrador do sistema para alterar seus dados no painel de Usuários."); 
+                    }}
+                    className="text-blue-600 hover:text-blue-800 underline font-medium"
+                  >
+                    Esqueceu a senha?
+                  </a>
+                </div>
+              </form>
+            ) : (
+              // FORMULÁRIO DE CADASTRO DE NOVA EMPRESA
+              <form onSubmit={handleRegisterCompany} className="space-y-3.5">
+                <div>
+                  <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider block mb-1">
+                    Nome do Estabelecimento
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Ex: Supermercado Modelo"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    className="w-full bg-gray-100 text-gray-800 text-sm px-3.5 py-2.5 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider block mb-1">
+                    WhatsApp ou Telefone
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Ex: (67) 99999-9999"
+                    value={companyPhone}
+                    onChange={(e) => setCompanyPhone(e.target.value)}
+                    className="w-full bg-gray-100 text-gray-800 text-sm px-3.5 py-2.5 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider block mb-1">
+                    Usuário Administrador
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Ex: gerente"
+                    value={adminUsername}
+                    onChange={(e) => setAdminUsername(e.target.value)}
+                    className="w-full bg-gray-100 text-gray-800 text-sm px-3.5 py-2.5 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider block mb-1">
+                    Senha de Acesso
+                  </label>
+                  <input 
+                    type="password"
+                    placeholder="Mínimo 4 dígitos"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="w-full bg-blue-50/50 text-gray-800 text-sm px-3.5 py-2.5 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
+                    required
+                  />
+                </div>
+
+                <button 
+                  type="submit"
+                  className="w-full bg-amber-500 hover:bg-amber-400 text-black font-bold py-3 rounded-lg text-sm tracking-wide shadow-md hover:shadow-lg transition-all cursor-pointer mt-1"
                 >
-                  Recuperação de senha
-                </a>
-              </div>
-            </form>
+                  Concluir Cadastro e Entrar
+                </button>
+
+                <div className="text-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setIsRegisteringCompany(false); setAuthError(''); }}
+                    className="text-xs text-gray-500 hover:text-gray-800 font-semibold cursor-pointer flex items-center justify-center gap-1 mx-auto"
+                  >
+                    <ArrowLeft size={13} />
+                    Voltar ao login existente
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
 
           <div className="bg-gray-50/80 p-5 px-8 border-t border-gray-100 space-y-2 text-xs text-gray-600">
