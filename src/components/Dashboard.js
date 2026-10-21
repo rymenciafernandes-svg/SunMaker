@@ -5,7 +5,7 @@ import {
   Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap, 
   Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
   BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, Lock, Building2,
-  Settings, Sliders, Printer, Camera, User, PlusCircle, ArrowLeft
+  Settings, Sliders, Printer, Camera, User, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -21,14 +21,6 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [authSuccess, setAuthSuccess] = useState('');
-
-  // Estados do Cadastro de Nova Empresa (Autoatendimento)
-  const [isRegisteringCompany, setIsRegisteringCompany] = useState(false);
-  const [companyName, setCompanyName] = useState('');
-  const [companyPhone, setCompanyPhone] = useState('');
-  const [adminUsername, setAdminUsername] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
 
   // Modais Institucionais
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -44,13 +36,21 @@ export default function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState('usuarios');
 
-  // Configurações - Usuários
+  // Configurações - Usuários da Empresa
   const [usersList, setUsersList] = useState([]);
   const [newUserName, setNewUserName] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
   const [newUserRole, setNewUserRole] = useState('operador');
   const [editingPasswordUserId, setEditingPasswordUserId] = useState(null);
   const [updatedPasswordValue, setUpdatedPasswordValue] = useState('');
+
+  // Configurações - Painel B2B do Administrador Geral (Gestão de Empresas)
+  const [companiesList, setCompaniesList] = useState([]);
+  const [newCompanyName, setNewCompanyName] = useState('');
+  const [newCompanySlug, setNewCompanySlug] = useState('');
+  const [newCompanyPhone, setNewCompanyPhone] = useState('');
+  const [newCompanyAdminUser, setNewCompanyAdminUser] = useState('');
+  const [newCompanyAdminPass, setNewCompanyAdminPass] = useState('');
 
   // Configurações - Margem Global
   const [globalMarginValue, setGlobalMarginValue] = useState('50');
@@ -68,6 +68,8 @@ export default function App() {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', category: '', stock: '', cost: '', margin: '', price: '' });
   const [calculationMode, setCalculationMode] = useState('markup');
+
+  const isSuperAdmin = currentUser?.username === 'admin' || currentUser?.role === 'superadmin';
 
   useEffect(() => {
     const savedUser = localStorage.getItem('sunmaker_user');
@@ -118,11 +120,10 @@ export default function App() {
     setShowPrivacyModal(true);
   };
 
-  // --- LOGIN TRADICIONAL ---
+  // --- AUTENTICAÇÃO COM VALIDAÇÃO DE STATUS DA EMPRESA ---
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
-    setAuthSuccess('');
 
     if (!readHelp || !readTerms || !readPrivacy) {
       const pendencias = [];
@@ -135,124 +136,56 @@ export default function App() {
 
     const cleanUser = username.trim().toLowerCase();
 
-    const { data } = await supabase
+    // 1. Busca na base de usuários
+    const { data: userData } = await supabase
       .from('app_users')
       .select('*')
       .ilike('username', cleanUser)
       .eq('password', password)
       .maybeSingle();
 
-    if (data) {
+    if (userData) {
+      const companyId = userData.company_id || 'empresa-padrao';
+
+      // Validação de status ativo do estabelecimento
+      if (companyId !== 'empresa-padrao' && cleanUser !== 'admin') {
+        const { data: comp } = await supabase
+          .from('companies')
+          .select('*')
+          .eq('company_id', companyId)
+          .maybeSingle();
+
+        if (comp && comp.status === 'bloqueado') {
+          setAuthError('Acesso suspenso: este estabelecimento está temporariamente desativado. Contate o suporte.');
+          return;
+        }
+      }
+
       const userObj = { 
-        username: data.username, 
-        role: data.role || 'operador',
-        company_id: data.company_id || 'empresa-padrao',
-        avatar_url: data.avatar_url || null
+        username: userData.username, 
+        role: userData.role || 'operador',
+        company_id: companyId,
+        avatar_url: userData.avatar_url || null
       };
+
       localStorage.setItem('sunmaker_user', JSON.stringify(userObj));
       setCurrentUser(userObj);
       setIsAuthenticated(true);
-      fetchProducts(userObj.company_id);
+      fetchProducts(companyId);
       return;
     }
 
+    // 2. Acesso Administrador Geral Mestre
     if (cleanUser === 'admin' && password === 'copasul') {
-      const adminObj = { username: 'admin', role: 'admin', company_id: 'empresa-padrao', avatar_url: null };
+      const adminObj = { username: 'admin', role: 'superadmin', company_id: 'empresa-padrao', avatar_url: null };
       localStorage.setItem('sunmaker_user', JSON.stringify(adminObj));
       setCurrentUser(adminObj);
       setIsAuthenticated(true);
-      fetchProducts(adminObj.company_id);
+      fetchProducts('empresa-padrao');
       return;
     }
 
     setAuthError('Usuário ou senha incorretos.');
-  };
-
-  // --- CADASTRO AUTOMÁTICO DE NOVA EMPRESA ---
-  const handleRegisterCompany = async (e) => {
-    e.preventDefault();
-    setAuthError('');
-    setAuthSuccess('');
-
-    if (!readHelp || !readTerms || !readPrivacy) {
-      const pendencias = [];
-      if (!readHelp) pendencias.push("Central de ajuda");
-      if (!readTerms) pendencias.push("Termos de uso");
-      if (!readPrivacy) pendencias.push("Política de privacidade");
-      setAuthError(`É obrigatório ler e concordar com os documentos no rodapé antes de cadastrar a empresa: ${pendencias.join(', ')}.`);
-      return;
-    }
-
-    const cleanCompName = companyName.trim();
-    const cleanAdminUser = adminUsername.trim().toLowerCase();
-    const cleanPhone = companyPhone.trim();
-
-    if (cleanCompName.length < 3) {
-      setAuthError('O nome da empresa deve conter pelo menos 3 caracteres.');
-      return;
-    }
-    if (cleanAdminUser.length < 3) {
-      setAuthError('O usuário administrador deve conter pelo menos 3 caracteres.');
-      return;
-    }
-    if (adminPassword.length < 4) {
-      setAuthError('A senha de acesso deve ter no mínimo 4 caracteres.');
-      return;
-    }
-
-    // Geração de identificador exclusivo (slug com sufixo aleatório)
-    const baseSlug = cleanCompName
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-    
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const generatedCompanyId = `${baseSlug || 'empresa'}-${randomSuffix}`;
-
-    // 1. Grava a nova empresa
-    const { error: companyError } = await supabase.from('companies').insert([
-      {
-        company_id: generatedCompanyId,
-        company_name: cleanCompName,
-        contact_phone: cleanPhone,
-        status: 'ativo'
-      }
-    ]);
-
-    if (companyError) {
-      setAuthError('Erro ao cadastrar empresa: ' + companyError.message);
-      return;
-    }
-
-    // 2. Grava o usuário administrador vinculado à nova empresa
-    const { error: userError } = await supabase.from('app_users').insert([
-      {
-        username: cleanAdminUser,
-        password: adminPassword,
-        role: 'admin',
-        company_id: generatedCompanyId
-      }
-    ]);
-
-    if (userError) {
-      setAuthError('Erro ao criar usuário administrador: ' + userError.message);
-      return;
-    }
-
-    // Sucesso e login imediato da nova empresa
-    const newUserObj = {
-      username: cleanAdminUser,
-      role: 'admin',
-      company_id: generatedCompanyId,
-      avatar_url: null
-    };
-
-    localStorage.setItem('sunmaker_user', JSON.stringify(newUserObj));
-    setCurrentUser(newUserObj);
-    setIsAuthenticated(true);
-    fetchProducts(generatedCompanyId);
   };
 
   const handleLogout = () => {
@@ -263,6 +196,88 @@ export default function App() {
     setPassword('');
     setProducts([]);
     setShowSettingsModal(false);
+  };
+
+  // --- CONSULTAS E AÇÕES B2B (EXCLUSIVO SUPER ADMIN) ---
+  const fetchCompanies = async () => {
+    const { data } = await supabase.from('companies').select('*').order('created_at', { ascending: false });
+    if (data) setCompaniesList(data);
+  };
+
+  const handleCreateCompanyB2B = async (e) => {
+    e.preventDefault();
+    const cleanName = newCompanyName.trim();
+    let cleanSlug = newCompanySlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const cleanAdmin = newCompanyAdminUser.trim().toLowerCase();
+    const cleanPass = newCompanyAdminPass.trim();
+
+    if (!cleanName || cleanName.length < 3) {
+      alert("Informe um nome de empresa válido.");
+      return;
+    }
+
+    if (!cleanSlug) {
+      cleanSlug = cleanName
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    }
+
+    if (!cleanAdmin || cleanPass.length < 4) {
+      alert("Informe um login de administrador e uma senha de no mínimo 4 dígitos.");
+      return;
+    }
+
+    // 1. Cadastra a empresa
+    const { error: compError } = await supabase.from('companies').insert([
+      {
+        company_id: cleanSlug,
+        company_name: cleanName,
+        contact_phone: newCompanyPhone.trim(),
+        status: 'ativo'
+      }
+    ]);
+
+    if (compError) {
+      alert("Erro ao cadastrar empresa: " + (compError.code === '23505' ? 'Identificador já em uso.' : compError.message));
+      return;
+    }
+
+    // 2. Cadastra o administrador inicial daquela empresa
+    const { error: userError } = await supabase.from('app_users').insert([
+      {
+        username: cleanAdmin,
+        password: cleanPass,
+        role: 'admin',
+        company_id: cleanSlug
+      }
+    ]);
+
+    if (userError) {
+      alert("Empresa cadastrada, mas houve erro ao criar o usuário: " + userError.message);
+    } else {
+      alert(`Empresa "${cleanName}" e administrador "${cleanAdmin}" cadastrados com sucesso.`);
+      setNewCompanyName('');
+      setNewCompanySlug('');
+      setNewCompanyPhone('');
+      setNewCompanyAdminUser('');
+      setNewCompanyAdminPass('');
+      fetchCompanies();
+    }
+  };
+
+  const handleToggleCompanyStatus = async (id, currentStatus, compName) => {
+    const nextStatus = currentStatus === 'ativo' ? 'bloqueado' : 'ativo';
+    const confirmMsg = nextStatus === 'bloqueado'
+      ? `Deseja bloquear o acesso de todos os operadores da empresa "${compName}"?`
+      : `Deseja reativar o acesso da empresa "${compName}"?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    await supabase.from('companies').update({ status: nextStatus }).eq('id', id);
+    fetchCompanies();
   };
 
   const handleAvatarUpload = (e) => {
@@ -543,12 +558,12 @@ export default function App() {
     setUploading(true);
     setUploadProgress(`Aplicando ${margin}% em todos os produtos...`);
 
-    setProducts(products.map(p => ({ ...p, margin: 50, is_new: false })));
+    setProducts(products.map(p => ({ ...p, margin, is_new: false })));
 
     try {
       const { error } = await supabase
         .from('products')
-        .update({ margin: 50, is_new: false })
+        .update({ margin, is_new: false })
         .eq('company_id', currentUser.company_id);
 
       if (error) {
@@ -560,7 +575,7 @@ export default function App() {
           const batchIds = idsToUpdate.slice(i, i + 200);
           await supabase
             .from('products')
-            .update({ margin: 50, is_new: false })
+            .update({ margin, is_new: false })
             .in('id', batchIds)
             .eq('company_id', currentUser.company_id);
         }
@@ -894,7 +909,7 @@ export default function App() {
   };
 
   // ==========================================
-  // TELA DE LOGIN & CADASTRO DE EMPRESA
+  // TELA DE LOGIN B2B (SEM CADASTRO PÚBLICO)
   // ==========================================
   if (!isAuthenticated) {
     return (
@@ -916,7 +931,7 @@ export default function App() {
                 SunMaker
               </h1>
               <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase mt-0.5">
-                {isRegisteringCompany ? "Nova Empresa - Autoatendimento" : "Portal de Inteligência"}
+                Portal de Inteligência Comercial
               </p>
             </div>
 
@@ -926,149 +941,56 @@ export default function App() {
               </motion.div>
             )}
 
-            {authSuccess && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-4 p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-medium text-center leading-relaxed">
-                {authSuccess}
-              </motion.div>
-            )}
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <input 
+                  type="text"
+                  placeholder="Nome de Usuário"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full bg-gray-100 text-gray-800 text-sm px-4 py-3 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
+                  required
+                />
+              </div>
 
-            {!isRegisteringCompany ? (
-              // FORMULÁRIO DE LOGIN CONVENCIONAL
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <input 
-                    type="text"
-                    placeholder="Nome de Usuário"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full bg-gray-100 text-gray-800 text-sm px-4 py-3 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
-                    required
-                  />
-                </div>
-
-                <div className="relative">
-                  <input 
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Senha de Acesso"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-blue-50/50 text-gray-800 text-sm px-4 py-3 pr-11 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
-                    required
-                  />
-                  <button 
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800 transition-colors"
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-
+              <div className="relative">
+                <input 
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Senha de Acesso"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-blue-50/50 text-gray-800 text-sm px-4 py-3 pr-11 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
+                  required
+                />
                 <button 
-                  type="submit"
-                  className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3 rounded-lg text-sm tracking-wide shadow-md hover:shadow-lg transition-all cursor-pointer"
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800 transition-colors"
                 >
-                  Acessar
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
+              </div>
 
-                <div className="flex justify-between items-center text-xs pt-2">
-                  <button
-                    type="button"
-                    onClick={() => { setIsRegisteringCompany(true); setAuthError(''); }}
-                    className="text-amber-600 hover:text-amber-700 font-bold cursor-pointer"
-                  >
-                    + Cadastrar nova empresa
-                  </button>
+              <button 
+                type="submit"
+                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3 rounded-lg text-sm tracking-wide shadow-md hover:shadow-lg transition-all cursor-pointer"
+              >
+                Acessar
+              </button>
 
-                  <a 
-                    href="#" 
-                    onClick={(e) => { 
-                      e.preventDefault(); 
-                      alert("Para redefinir sua senha, solicite ao administrador do sistema para alterar seus dados no painel de Usuários."); 
-                    }}
-                    className="text-blue-600 hover:text-blue-800 underline font-medium"
-                  >
-                    Esqueceu a senha?
-                  </a>
-                </div>
-              </form>
-            ) : (
-              // FORMULÁRIO DE CADASTRO DE NOVA EMPRESA
-              <form onSubmit={handleRegisterCompany} className="space-y-3.5">
-                <div>
-                  <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider block mb-1">
-                    Nome do Estabelecimento
-                  </label>
-                  <input 
-                    type="text"
-                    placeholder="Ex: Supermercado Modelo"
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    className="w-full bg-gray-100 text-gray-800 text-sm px-3.5 py-2.5 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider block mb-1">
-                    WhatsApp ou Telefone
-                  </label>
-                  <input 
-                    type="text"
-                    placeholder="Ex: (67) 99999-9999"
-                    value={companyPhone}
-                    onChange={(e) => setCompanyPhone(e.target.value)}
-                    className="w-full bg-gray-100 text-gray-800 text-sm px-3.5 py-2.5 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider block mb-1">
-                    Usuário Administrador
-                  </label>
-                  <input 
-                    type="text"
-                    placeholder="Ex: gerente"
-                    value={adminUsername}
-                    onChange={(e) => setAdminUsername(e.target.value)}
-                    className="w-full bg-gray-100 text-gray-800 text-sm px-3.5 py-2.5 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider block mb-1">
-                    Senha de Acesso
-                  </label>
-                  <input 
-                    type="password"
-                    placeholder="Mínimo 4 dígitos"
-                    value={adminPassword}
-                    onChange={(e) => setAdminPassword(e.target.value)}
-                    className="w-full bg-blue-50/50 text-gray-800 text-sm px-3.5 py-2.5 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
-                    required
-                  />
-                </div>
-
-                <button 
-                  type="submit"
-                  className="w-full bg-amber-500 hover:bg-amber-400 text-black font-bold py-3 rounded-lg text-sm tracking-wide shadow-md hover:shadow-lg transition-all cursor-pointer mt-1"
+              <div className="text-center pt-2">
+                <a 
+                  href="#" 
+                  onClick={(e) => { 
+                    e.preventDefault(); 
+                    alert("Para redefinir sua credencial ou contratar acessos adicionais, contate o administrador da plataforma."); 
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
                 >
-                  Concluir Cadastro e Entrar
-                </button>
-
-                <div className="text-center pt-1">
-                  <button
-                    type="button"
-                    onClick={() => { setIsRegisteringCompany(false); setAuthError(''); }}
-                    className="text-xs text-gray-500 hover:text-gray-800 font-semibold cursor-pointer flex items-center justify-center gap-1 mx-auto"
-                  >
-                    <ArrowLeft size={13} />
-                    Voltar ao login existente
-                  </button>
-                </div>
-              </form>
-            )}
+                  Recuperação de senha e suporte
+                </a>
+              </div>
+            </form>
           </div>
 
           <div className="bg-gray-50/80 p-5 px-8 border-t border-gray-100 space-y-2 text-xs text-gray-600">
@@ -1220,21 +1142,21 @@ export default function App() {
                   <div className="border-l-2 border-amber-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">1. Objeto e Finalidade</h4>
                     <p>
-                      A plataforma SunMaker é uma ferramenta de uso corporativo desenvolvida para gestão de preços, sincronização de relatórios e análise de rentabilidade em operações de varejo e distribuição comercial. O acesso é restrito a colaboradores e usuários devidamente autorizados pela administração do estabelecimento.
+                      A plataforma SunMaker é uma ferramenta corporativa de gestão de preços, sincronização de relatórios e análise de rentabilidade comercial. O acesso é restrito a estabelecimentos contratantes e usuários previamente homologados.
                     </p>
                   </div>
 
                   <div className="border-l-2 border-amber-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">2. Confidencialidade Comercial</h4>
                     <p>
-                      Todos os dados contidos na plataforma, incluindo custos de aquisição de produtos, margens praticadas, estoque físico e projeções de lucratividade, constituem informações confidenciais e segredo comercial. É terminantemente proibida a extração, cópia ou repasse desses registros para terceiros não autorizados.
+                      Todos os dados contidos na plataforma, incluindo custos de aquisição de produtos, margens praticadas, estoque físico e projeções de lucratividade, constituem informações confidenciais e segredo comercial. É terminantemente proibida a extração ou repasse desses registros para terceiros não autorizados.
                     </p>
                   </div>
 
                   <div className="border-l-2 border-amber-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">3. Responsabilidade pelas Credenciais</h4>
                     <p>
-                      Cada operador é responsável pela segurança de seu login e senha. Quaisquer ações executadas na base de dados (atualização de preços, definição de margens ou exclusão de cadastros) serão registradas e vinculadas à conta autenticada no momento da operação.
+                      Cada operador é responsável pela segurança de seu login e senha. Quaisquer ações executadas na base de dados serão registradas e vinculadas à conta autenticada no momento da operação.
                     </p>
                   </div>
 
@@ -1248,7 +1170,7 @@ export default function App() {
                   <div className="border-l-2 border-amber-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">5. Auditoria e Encerramento de Acesso</h4>
                     <p>
-                      A administração reserva-se o direito de monitorar o uso da ferramenta, redefinir senhas, alterar níveis de permissão (Operador ou Administrador) e revogar acessos de usuários inativos, desligados ou que descumpram as diretrizes de segurança.
+                      A administração reserva-se o direito de monitorar o uso da ferramenta, redefinir senhas, alterar níveis de permissão (Operador ou Administrador) e revogar acessos de usuários inativos, desligados ou com assinaturas suspensas.
                     </p>
                   </div>
                 </div>
@@ -1303,7 +1225,7 @@ export default function App() {
                   <div className="border-l-2 border-emerald-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">2. Armazenamento e Segurança da Informação</h4>
                     <p>
-                      Todas as informações são armazenadas em infraestrutura de nuvem segura provida pelo Supabase, empregando criptografia em trânsito (protocolo TLS/SSL), isolamento lógico multi-empresa e controles de acesso restritos. Senhas de acesso são protegidas e administradas exclusivamente pelo perfil gestor.
+                      Todas as informações são armazenadas em infraestrutura de nuvem segura provida pelo Supabase, empregando criptografia em trânsito (protocolo TLS/SSL), isolamento lógico multi-empresa e controles de acesso restritos.
                     </p>
                   </div>
 
@@ -1317,7 +1239,7 @@ export default function App() {
                   <div className="border-l-2 border-emerald-500 pl-3">
                     <h4 className="text-sm font-bold text-white mb-1">4. Conformidade com a Legislação (LGPD)</h4>
                     <p>
-                      Em estrito cumprimento à Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018), os usuários têm o direito de confirmar a existência de tratamento de seus dados, solicitar a retificação de cadastros inconsistentes e requerer a exclusão de suas credenciais mediante solicitação formal ao administrador do sistema.
+                      Em estrito cumprimento à Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018), os usuários têm o direito de confirmar a existência de tratamento de seus dados e solicitar retificações mediante solicitação formal ao gestor da plataforma.
                     </p>
                   </div>
 
@@ -1405,7 +1327,11 @@ export default function App() {
 
           {/* Botão Central de Configurações */}
           <button 
-            onClick={() => { fetchUsers(); setShowSettingsModal(true); }}
+            onClick={() => { 
+              fetchUsers(); 
+              if (isSuperAdmin) fetchCompanies();
+              setShowSettingsModal(true); 
+            }}
             className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm cursor-pointer"
             title="Abrir Central de Configurações"
           >
@@ -1441,7 +1367,7 @@ export default function App() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row max-h-[85vh]"
+              className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col md:flex-row max-h-[88vh]"
             >
               <div className="w-full md:w-56 bg-neutral-950 p-4 border-b md:border-b-0 md:border-r border-neutral-800 flex flex-col justify-between">
                 <div>
@@ -1482,6 +1408,17 @@ export default function App() {
                       <Building2 size={15} />
                       Empresa e Conta
                     </button>
+
+                    {/* ABA EXCLUSIVA DO SUPER ADMINISTRADOR */}
+                    {isSuperAdmin && (
+                      <button
+                        onClick={() => { setActiveSettingsTab('empresas'); fetchCompanies(); }}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${activeSettingsTab === 'empresas' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-blue-400/80 hover:bg-neutral-900 hover:text-blue-300'}`}
+                      >
+                        <Shield size={15} />
+                        Gestão de Empresas
+                      </button>
+                    )}
                   </nav>
                 </div>
 
@@ -1498,6 +1435,7 @@ export default function App() {
                       {activeSettingsTab === 'exportacao' && "Exportação e Relatórios"}
                       {activeSettingsTab === 'margens' && "Regras de Margem e Base de Dados"}
                       {activeSettingsTab === 'empresa' && "Informações da Empresa e Sessão"}
+                      {activeSettingsTab === 'empresas' && "Gestão Central de Clientes e Empresas (B2B)"}
                     </h3>
                     <button onClick={() => setShowSettingsModal(false)} className="text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer">
                       <X size={18} />
@@ -1619,6 +1557,104 @@ export default function App() {
                                   </button>
                                 </div>
                               )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ABA: GESTÃO DE EMPRESAS B2B (SUPER ADMIN) */}
+                  {activeSettingsTab === 'empresas' && isSuperAdmin && (
+                    <div className="space-y-6">
+                      <form onSubmit={handleCreateCompanyB2B} className="bg-black/40 border border-neutral-800 p-4 rounded-xl space-y-3">
+                        <p className="text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <Building2 size={14} />
+                          Cadastrar Novo Estabelecimento / Cliente
+                        </p>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <input 
+                            type="text" 
+                            placeholder="Nome Fantasia (Ex: Supermercado Sol)" 
+                            value={newCompanyName}
+                            onChange={(e) => setNewCompanyName(e.target.value)}
+                            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500"
+                            required
+                          />
+                          <input 
+                            type="text" 
+                            placeholder="Identificador Único (Ex: super-sol)" 
+                            value={newCompanySlug}
+                            onChange={(e) => setNewCompanySlug(e.target.value)}
+                            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500 font-mono text-xs"
+                          />
+                          <input 
+                            type="text" 
+                            placeholder="WhatsApp / Contato" 
+                            value={newCompanyPhone}
+                            onChange={(e) => setNewCompanyPhone(e.target.value)}
+                            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <input 
+                            type="text" 
+                            placeholder="Login Inicial do Gerente (Ex: gerentesol)" 
+                            value={newCompanyAdminUser}
+                            onChange={(e) => setNewCompanyAdminUser(e.target.value)}
+                            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500"
+                            required
+                          />
+                          <input 
+                            type="password" 
+                            placeholder="Senha Inicial de Acesso (min. 4 dígitos)" 
+                            value={newCompanyAdminPass}
+                            onChange={(e) => setNewCompanyAdminPass(e.target.value)}
+                            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500"
+                            required
+                          />
+                        </div>
+
+                        <div className="text-right pt-1">
+                          <button 
+                            type="submit"
+                            className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-lg text-xs transition-all cursor-pointer"
+                          >
+                            Ativar Nova Empresa e Criar Acesso
+                          </button>
+                        </div>
+                      </form>
+
+                      <div>
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                          Empresas Registradas no Sistema ({companiesList.length})
+                        </p>
+                        <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                          {companiesList.map(comp => (
+                            <div key={comp.id} className="bg-neutral-950 p-3 rounded-lg border border-neutral-800 flex justify-between items-center">
+                              <div>
+                                <p className="text-sm font-semibold text-white flex items-center gap-2">
+                                  {comp.company_name}
+                                  <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${comp.status === 'ativo' ? 'bg-emerald-950 text-emerald-400 border border-emerald-900' : 'bg-red-950 text-red-400 border border-red-900'}`}>
+                                    {comp.status || 'ativo'}
+                                  </span>
+                                </p>
+                                <p className="text-[11px] text-gray-500 font-mono mt-0.5">
+                                  ID: {comp.company_id} {comp.contact_phone ? `| Contato: ${comp.contact_phone}` : ''}
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleToggleCompanyStatus(comp.id, comp.status, comp.company_name)}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${comp.status === 'ativo' ? 'bg-red-950/60 hover:bg-red-900 text-red-400' : 'bg-emerald-950/60 hover:bg-emerald-900 text-emerald-400'}`}
+                                >
+                                  {comp.status === 'ativo' ? <ToggleRight size={15} /> : <ToggleLeft size={15} />}
+                                  {comp.status === 'ativo' ? 'Suspender' : 'Reativar'}
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
