@@ -89,37 +89,48 @@ export default function Dashboard() {
     }
   };
 
-  // --- NOVA FUNÇÃO: APLICAR 50% GLOBALMENTE ---
-  const handleApplySuggestedMargin = async () => {
-    if (!window.confirm('Deseja aplicar a margem de 50% em TODOS os produtos que estão com 0% ou sem margem?')) return;
+  // --- APLICAR 50% EM TODOS OS PRODUTOS (GERAL) ---
+  const handleApplyFiftyPercentAll = async () => {
+    if (products.length === 0) {
+      alert("Nenhum produto cadastrado para aplicar margem.");
+      return;
+    }
+
+    const confirm = window.confirm(
+      `Deseja aplicar a margem de 50% em TODOS os ${products.length} produtos cadastrados? Isso substituirá a margem atual de todos eles.`
+    );
+    if (!confirm) return;
 
     setUploading(true);
-    setUploadProgress('A aplicar 50%...');
+    setUploadProgress('A aplicar 50% em todos os produtos...');
 
-    const productsToUpdate = products.filter(p => !p.margin || p.margin === 0);
+    // Atualização visual instantânea em todos os itens
+    setProducts(products.map(p => ({ ...p, margin: 50, is_new: false })));
 
-    // Atualiza estado visual na hora
-    setProducts(products.map(p => {
-      if (!p.margin || p.margin === 0) {
-        return { ...p, margin: 50, is_new: false };
-      }
-      return p;
-    }));
-
-    // Atualiza na base de dados em lotes para suportar milhares de itens
     try {
-      const idsToUpdate = productsToUpdate
-        .filter(p => typeof p.id === 'string' && !p.id.startsWith('local-'))
-        .map(p => p.id);
+      // Atualização direta em massa no Supabase
+      const { error } = await supabase
+        .from('products')
+        .update({ margin: 50, is_new: false })
+        .not('id', 'is', null);
 
-      if (idsToUpdate.length > 0) {
+      if (error) {
+        console.error("Erro na atualização direta, aplicando por lotes:", error);
+        const idsToUpdate = products
+          .filter(p => typeof p.id === 'string' && !p.id.startsWith('local-'))
+          .map(p => p.id);
+        
         for (let i = 0; i < idsToUpdate.length; i += 200) {
           const batchIds = idsToUpdate.slice(i, i + 200);
           await supabase.from('products').update({ margin: 50, is_new: false }).in('id', batchIds);
         }
       }
+
+      alert(`Margem de 50% aplicada com sucesso a todos os ${products.length} produtos!`);
     } catch (err) {
-      console.error('Erro ao sugerir margem', err);
+      console.error("Erro ao aplicar 50%:", err);
+      alert("Ocorreu um erro ao atualizar no banco de dados.");
+      fetchProducts();
     }
 
     setUploading(false);
@@ -429,6 +440,17 @@ export default function Dashboard() {
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading} />
           </label>
 
+          {/* NOVO BOTÃO: APLICAR 50% EM TODOS OS PRODUTOS */}
+          <button 
+            onClick={handleApplyFiftyPercentAll}
+            disabled={uploading || products.length === 0}
+            className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm disabled:opacity-40"
+            title="Substituir e definir margem de 50% em todos os produtos cadastrados"
+          >
+            <Zap size={15} className="text-amber-400" />
+            Aplicar 50% em Todos
+          </button>
+
           <button 
             onClick={handleClearAllData} 
             disabled={uploading}
@@ -515,30 +537,13 @@ export default function Dashboard() {
           </p>
         </motion.div>
 
-        {/* CARTÃO DE REVISÃO COM O NOVO BOTÃO DE 50% */}
-        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-red-950/70 shadow-xl flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-red-400 font-medium text-xs uppercase tracking-wider">Revisar Margem</h3>
-              <AlertCircle className="text-red-500" size={20} />
-            </div>
-            <p className="text-3xl font-bold text-red-500">{productsWithoutMargin.length}</p>
+        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-red-950/70 shadow-xl">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-red-400 font-medium text-xs uppercase tracking-wider">Revisar Margem</h3>
+            <AlertCircle className="text-red-500" size={20} />
           </div>
-          
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-xs text-gray-500">Sem margem definida</span>
-            {productsWithoutMargin.length > 0 && (
-              <button 
-                onClick={handleApplySuggestedMargin}
-                disabled={uploading}
-                className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded text-[10px] uppercase font-bold transition-all flex items-center gap-1"
-                title="Aplicar 50% de margem em todos os produtos pendentes"
-              >
-                <Zap size={10} />
-                Sugerir 50%
-              </button>
-            )}
-          </div>
+          <p className="text-3xl font-bold text-red-500">{productsWithoutMargin.length}</p>
+          <p className="text-xs text-gray-500 mt-1">Produtos sem margem ou a 0%</p>
         </motion.div>
       </div>
 
@@ -658,7 +663,7 @@ export default function Dashboard() {
                             step="1"
                             value={editForm.stock} 
                             onChange={(e) => setEditForm({ ...editForm, stock: e.target.value })}
-                            className="w-20 bg-black border border-amber-500/70 rounded px-2 py-1 text-sm text-center outline-none"
+                            className="w-20 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm text-center outline-none"
                           />
                         ) : (
                           <span className="font-mono text-sm text-gray-200">
@@ -729,8 +734,8 @@ export default function Dashboard() {
                             <input 
                               type="number" 
                               step="0.01"
-                              placeholder="50" 
-                              className="w-16 bg-black border border-neutral-700 rounded px-2 py-1 text-sm outline-none focus:border-amber-500 placeholder:text-gray-600"
+                              placeholder="%" 
+                              className="w-16 bg-black border border-neutral-700 rounded px-2.5 py-1 text-sm outline-none focus:border-amber-500"
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleSetMargin(product.id, e.target.value);
                               }}
