@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Download, Trash2, TrendingUp, AlertCircle, Package, 
   Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap, 
   Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
   BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, Lock, Building2,
-  Settings, Sliders, Printer
+  Settings, Sliders, Printer, Camera, User
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -46,6 +46,9 @@ export default function App() {
 
   // Configurações - Margem Global
   const [globalMarginValue, setGlobalMarginValue] = useState('50');
+
+  // Referência para upload de avatar
+  const avatarInputRef = useRef(null);
 
   // Estados do Dashboard
   const [products, setProducts] = useState([]);
@@ -133,7 +136,8 @@ export default function App() {
       const userObj = { 
         username: data.username, 
         role: data.role || 'operador',
-        company_id: data.company_id || 'empresa-padrao'
+        company_id: data.company_id || 'empresa-padrao',
+        avatar_url: data.avatar_url || null
       };
       localStorage.setItem('sunmaker_user', JSON.stringify(userObj));
       setCurrentUser(userObj);
@@ -143,7 +147,7 @@ export default function App() {
     }
 
     if (cleanUser === 'admin' && password === 'copasul') {
-      const adminObj = { username: 'admin', role: 'admin', company_id: 'empresa-padrao' };
+      const adminObj = { username: 'admin', role: 'admin', company_id: 'empresa-padrao', avatar_url: null };
       localStorage.setItem('sunmaker_user', JSON.stringify(adminObj));
       setCurrentUser(adminObj);
       setIsAuthenticated(true);
@@ -162,6 +166,75 @@ export default function App() {
     setPassword('');
     setProducts([]);
     setShowSettingsModal(false);
+  };
+
+  // Upload e Redimensionamento da Foto de Perfil
+  const handleAvatarUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file || !currentUser) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const maxSize = 180;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxSize) {
+            height = Math.round((height * maxSize) / width);
+            width = maxSize;
+          }
+        } else {
+          if (height > maxSize) {
+            width = Math.round((width * maxSize) / height);
+            height = maxSize;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+
+        const updatedUser = { ...currentUser, avatar_url: compressedBase64 };
+        setCurrentUser(updatedUser);
+        localStorage.setItem('sunmaker_user', JSON.stringify(updatedUser));
+
+        try {
+          await supabase
+            .from('app_users')
+            .update({ avatar_url: compressedBase64 })
+            .ilike('username', currentUser.username)
+            .eq('company_id', currentUser.company_id);
+        } catch (err) {
+          console.error("Erro ao atualizar foto de perfil:", err);
+        }
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!currentUser) return;
+    const updatedUser = { ...currentUser, avatar_url: null };
+    setCurrentUser(updatedUser);
+    localStorage.setItem('sunmaker_user', JSON.stringify(updatedUser));
+
+    try {
+      await supabase
+        .from('app_users')
+        .update({ avatar_url: null })
+        .ilike('username', currentUser.username)
+        .eq('company_id', currentUser.company_id);
+    } catch (err) {
+      console.error("Erro ao remover foto:", err);
+    }
   };
 
   const fetchProducts = async (companyId) => {
@@ -886,7 +959,7 @@ export default function App() {
                     </p>
                   </div>
 
-                  <div className="bg-neutral-950 p-4 rounded-xl border border-emerald-400 font-semibold mb-1.5">
+                  <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
                     <div className="flex items-center gap-2 text-emerald-400 font-semibold mb-1.5">
                       <Calculator size={16} />
                       <h4>Definição de preços e cálculo automático</h4>
@@ -1090,7 +1163,6 @@ export default function App() {
   // ==========================================
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans text-white">
-      {/* CABEÇALHO LIMPO E PROFISSIONAL */}
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8 border-b border-gray-800 pb-6 no-print">
         <div>
           <motion.h1 
@@ -1146,7 +1218,15 @@ export default function App() {
             className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm"
             title="Abrir Central de Configurações"
           >
-            <Settings size={16} />
+            {currentUser?.avatar_url ? (
+              <img 
+                src={currentUser.avatar_url} 
+                alt="Avatar" 
+                className="w-5 h-5 rounded-full object-cover border border-amber-500/50"
+              />
+            ) : (
+              <Settings size={16} />
+            )}
             Configurações
           </button>
 
@@ -1393,7 +1473,6 @@ export default function App() {
                   {/* ABA: MARGENS E REGRAS */}
                   {activeSettingsTab === 'margens' && (
                     <div className="space-y-5 text-sm">
-                      {/* Aplicar Margem em Massa */}
                       <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 space-y-3">
                         <div className="flex items-center gap-2 text-amber-400 font-semibold">
                           <Zap size={18} />
@@ -1432,7 +1511,6 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Modo de Precificação */}
                       <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 space-y-2">
                         <div className="flex items-center gap-2 text-blue-400 font-semibold">
                           <Calculator size={18} />
@@ -1443,7 +1521,6 @@ export default function App() {
                         </p>
                       </div>
 
-                      {/* Zona de Perigo */}
                       <div className="bg-red-950/20 border border-red-900/50 p-4 rounded-xl space-y-2">
                         <div className="flex items-center gap-2 text-red-400 font-semibold">
                           <Trash2 size={16} />
@@ -1463,16 +1540,74 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* ABA: EMPRESA E CONTA */}
+                  {/* ABA: EMPRESA E CONTA COM FOTO DE PERFIL */}
                   {activeSettingsTab === 'empresa' && (
                     <div className="space-y-4 text-xs">
-                      <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 space-y-3">
-                        <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
-                          <Building2 size={18} />
-                          <h4>Identificação da Conta</h4>
+                      <div className="bg-neutral-950 p-5 rounded-xl border border-neutral-800 space-y-4">
+                        {/* Cabeçalho do Card com Avatar no Canto Superior Direito */}
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
+                            <Building2 size={18} />
+                            <h4>Identificação da Conta</h4>
+                          </div>
+
+                          {/* Foto de Perfil Interativa */}
+                          <div className="flex flex-col items-center">
+                            <div className="relative group">
+                              <div className="w-16 h-16 rounded-full overflow-hidden bg-neutral-900 border-2 border-amber-500/60 shadow-lg flex items-center justify-center">
+                                {currentUser?.avatar_url ? (
+                                  <img 
+                                    src={currentUser.avatar_url} 
+                                    alt="Foto de Perfil" 
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <span className="text-2xl font-black text-amber-500 uppercase">
+                                    {currentUser?.username ? currentUser.username.charAt(0) : <User size={24} />}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Botão de Trocar Imagem sobre o Avatar */}
+                              <button
+                                onClick={() => avatarInputRef.current?.click()}
+                                className="absolute inset-0 bg-black/60 rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[10px] font-semibold cursor-pointer"
+                                title="Alterar foto de perfil"
+                              >
+                                <Camera size={16} />
+                                <span>Alterar</span>
+                              </button>
+
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                ref={avatarInputRef} 
+                                onChange={handleAvatarUpload} 
+                                className="hidden" 
+                              />
+                            </div>
+
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <button
+                                onClick={() => avatarInputRef.current?.click()}
+                                className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold cursor-pointer"
+                              >
+                                {currentUser?.avatar_url ? 'Alterar foto' : 'Adicionar foto'}
+                              </button>
+                              {currentUser?.avatar_url && (
+                                <button
+                                  onClick={handleRemoveAvatar}
+                                  className="text-[11px] text-red-400 hover:text-red-300 font-medium cursor-pointer"
+                                >
+                                  Remover
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
-                        <div className="space-y-2 text-gray-300">
+                        {/* Detalhes da Conta */}
+                        <div className="space-y-2 text-gray-300 pt-1">
                           <div className="flex justify-between py-1 border-b border-neutral-900">
                             <span className="text-gray-500">Usuário Conectado:</span>
                             <span className="font-semibold text-white">{currentUser?.username}</span>
@@ -1494,7 +1629,7 @@ export default function App() {
                         <div className="pt-2">
                           <button
                             onClick={handleLogout}
-                            className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 font-medium px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition-all"
+                            className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 font-medium px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition-all cursor-pointer"
                           >
                             <LogOut size={14} className="text-gray-400" />
                             Encerrar Sessão Desta Conta
@@ -1508,7 +1643,7 @@ export default function App() {
                 <div className="pt-4 border-t border-neutral-800 text-right mt-6">
                   <button 
                     onClick={() => setShowSettingsModal(false)}
-                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
                   >
                     Fechar
                   </button>
