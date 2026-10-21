@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Download, Trash2, TrendingUp, AlertCircle, Package, Edit3, X, Check, Search, Filter, DollarSign, Boxes } from 'lucide-react';
+import { Upload, Download, Trash2, TrendingUp, AlertCircle, Package, Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
 
@@ -87,6 +87,43 @@ export default function Dashboard() {
       setUploading(false);
       setUploadProgress('');
     }
+  };
+
+  // --- NOVA FUNÇÃO: APLICAR 50% GLOBALMENTE ---
+  const handleApplySuggestedMargin = async () => {
+    if (!window.confirm('Deseja aplicar a margem de 50% em TODOS os produtos que estão com 0% ou sem margem?')) return;
+
+    setUploading(true);
+    setUploadProgress('A aplicar 50%...');
+
+    const productsToUpdate = products.filter(p => !p.margin || p.margin === 0);
+
+    // Atualiza estado visual na hora
+    setProducts(products.map(p => {
+      if (!p.margin || p.margin === 0) {
+        return { ...p, margin: 50, is_new: false };
+      }
+      return p;
+    }));
+
+    // Atualiza na base de dados em lotes para suportar milhares de itens
+    try {
+      const idsToUpdate = productsToUpdate
+        .filter(p => typeof p.id === 'string' && !p.id.startsWith('local-'))
+        .map(p => p.id);
+
+      if (idsToUpdate.length > 0) {
+        for (let i = 0; i < idsToUpdate.length; i += 200) {
+          const batchIds = idsToUpdate.slice(i, i + 200);
+          await supabase.from('products').update({ margin: 50, is_new: false }).in('id', batchIds);
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao sugerir margem', err);
+    }
+
+    setUploading(false);
+    setUploadProgress('');
   };
 
   const startEditing = (product) => {
@@ -210,6 +247,31 @@ export default function Dashboard() {
             }
           });
 
+          if (parsedProducts.length === 0 && results.data.length > 1) {
+            const headers = results.data[0].map(h => String(h).toLowerCase().trim());
+            const nameIdx = headers.findIndex(h => /nome|produto|descri/i.test(h));
+            const categoryIdx = headers.findIndex(h => /categoria|grupo|tipo/i.test(h));
+            const stockIdx = headers.findIndex(h => /estoque|saldo|qtd|quant/i.test(h));
+            const costIdx = headers.findIndex(h => /custo|pre[cç]o|valor/i.test(h));
+            const marginIdx = headers.findIndex(h => /margem|margin/i.test(h));
+
+            if (nameIdx !== -1) {
+              results.data.slice(1).forEach(row => {
+                const name = row[nameIdx];
+                if (!name) return;
+                const category = categoryIdx !== -1 && row[categoryIdx] ? String(row[categoryIdx]).trim() : 'Geral';
+                const stock = stockIdx !== -1 ? parseFloat(String(row[stockIdx]).replace(',', '.')) || 0 : 0;
+                const cost = costIdx !== -1 ? parseFloat(String(row[costIdx]).replace(',', '.')) || 0 : 0;
+                let margin = null;
+                if (marginIdx !== -1 && row[marginIdx]) {
+                  const m = parseFloat(String(row[marginIdx]).replace('%', '').replace(',', '.'));
+                  if (!isNaN(m)) margin = m;
+                }
+                parsedProducts.push({ name: String(name).trim(), category, stock, cost, margin, is_new: true });
+              });
+            }
+          }
+
           if (parsedProducts.length === 0) {
             alert("Não foram encontrados dados no relatório.");
             setUploading(false);
@@ -217,7 +279,6 @@ export default function Dashboard() {
             return;
           }
 
-          // --- SISTEMA DE LOTES (BATCHING) PARA RELATÓRIOS GIGANTES ---
           const batchSize = 500;
           let successCount = 0;
           let hasError = false;
@@ -241,7 +302,6 @@ export default function Dashboard() {
              alert(`${successCount} produtos importados (${detectedMode === 'markup' ? 'Modo Markup' : 'Modo Margem'}).`);
           }
           
-          // Atualiza a tabela com tudo o que foi importado com sucesso
           fetchProducts();
           setUploading(false);
           setUploadProgress('');
@@ -365,7 +425,7 @@ export default function Dashboard() {
 
           <label className="cursor-pointer bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium">
             <Upload size={16} />
-            <span>{uploading ? uploadProgress : "Upload Relatório"}</span>
+            <span>{uploading && uploadProgress !== '' ? uploadProgress : "Upload Relatório"}</span>
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading} />
           </label>
 
@@ -455,13 +515,30 @@ export default function Dashboard() {
           </p>
         </motion.div>
 
-        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-red-950/70 shadow-xl">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-red-400 font-medium text-xs uppercase tracking-wider">Revisar Margem</h3>
-            <AlertCircle className="text-red-500" size={20} />
+        {/* CARTÃO DE REVISÃO COM O NOVO BOTÃO DE 50% */}
+        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-red-950/70 shadow-xl flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-red-400 font-medium text-xs uppercase tracking-wider">Revisar Margem</h3>
+              <AlertCircle className="text-red-500" size={20} />
+            </div>
+            <p className="text-3xl font-bold text-red-500">{productsWithoutMargin.length}</p>
           </div>
-          <p className="text-3xl font-bold text-red-500">{productsWithoutMargin.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Produtos sem margem ou a 0%</p>
+          
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-xs text-gray-500">Sem margem definida</span>
+            {productsWithoutMargin.length > 0 && (
+              <button 
+                onClick={handleApplySuggestedMargin}
+                disabled={uploading}
+                className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded text-[10px] uppercase font-bold transition-all flex items-center gap-1"
+                title="Aplicar 50% de margem em todos os produtos pendentes"
+              >
+                <Zap size={10} />
+                Sugerir 50%
+              </button>
+            )}
+          </div>
         </motion.div>
       </div>
 
@@ -611,7 +688,7 @@ export default function Dashboard() {
                             step="0.001"
                             value={editForm.margin} 
                             onChange={(e) => setEditForm({ ...editForm, margin: e.target.value })}
-                            placeholder="%"
+                            placeholder="50%"
                             className="w-20 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
                           />
                         ) : (
@@ -652,8 +729,8 @@ export default function Dashboard() {
                             <input 
                               type="number" 
                               step="0.01"
-                              placeholder="%" 
-                              className="w-16 bg-black border border-neutral-700 rounded px-2 py-1 text-sm outline-none focus:border-amber-500"
+                              placeholder="50" 
+                              className="w-16 bg-black border border-neutral-700 rounded px-2 py-1 text-sm outline-none focus:border-amber-500 placeholder:text-gray-600"
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleSetMargin(product.id, e.target.value);
                               }}
