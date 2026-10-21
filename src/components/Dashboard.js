@@ -12,7 +12,7 @@ export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('todas');
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ name: '', category: '', stock: '', cost: '', margin: '' });
+  const [editForm, setEditForm] = useState({ name: '', category: '', stock: '', cost: '', margin: '', price: '' });
   
   const [calculationMode, setCalculationMode] = useState('markup');
 
@@ -32,6 +32,34 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // --- DEFINIR PREÇO SUGERIDO E CALCULAR MARGEM AUTOMATICAMENTE ---
+  const handleSetPrice = async (id, priceValue) => {
+    const rawPrice = String(priceValue).replace('R$', '').replace(/\s/g, '').replace(',', '.');
+    const price = parseFloat(rawPrice);
+    if (isNaN(price) || price <= 0) return;
+
+    const product = products.find(p => p.id === id);
+    if (!product) return;
+
+    const cost = Number(product.cost) || 0;
+    if (cost <= 0) return;
+
+    // Calcula a margem a partir do preço informado
+    let margin = 0;
+    if (calculationMode === 'markup') {
+      margin = ((price - cost) / cost) * 100;
+    } else {
+      margin = ((price - cost) / price) * 100;
+    }
+    margin = Math.round(margin * 1000) / 1000;
+
+    setProducts(products.map(p => p.id === id ? { ...p, margin, is_new: false } : p));
+
+    if (typeof id === 'string' && !id.startsWith('local-')) {
+      await supabase.from('products').update({ margin, is_new: false }).eq('id', id);
     }
   };
 
@@ -89,33 +117,26 @@ export default function Dashboard() {
     }
   };
 
-  // --- APLICAR 50% EM TODOS OS PRODUTOS (GERAL) ---
   const handleApplyFiftyPercentAll = async () => {
-    if (products.length === 0) {
-      alert("Nenhum produto cadastrado para aplicar margem.");
-      return;
-    }
+    if (products.length === 0) return;
 
     const confirm = window.confirm(
-      `Deseja aplicar a margem de 50% em TODOS os ${products.length} produtos cadastrados? Isso substituirá a margem atual de todos eles.`
+      `Deseja aplicar a margem de 50% em TODOS os ${products.length} produtos cadastrados?`
     );
     if (!confirm) return;
 
     setUploading(true);
     setUploadProgress('A aplicar 50% em todos os produtos...');
 
-    // Atualização visual instantânea em todos os itens
     setProducts(products.map(p => ({ ...p, margin: 50, is_new: false })));
 
     try {
-      // Atualização direta em massa no Supabase
       const { error } = await supabase
         .from('products')
         .update({ margin: 50, is_new: false })
         .not('id', 'is', null);
 
       if (error) {
-        console.error("Erro na atualização direta, aplicando por lotes:", error);
         const idsToUpdate = products
           .filter(p => typeof p.id === 'string' && !p.id.startsWith('local-'))
           .map(p => p.id);
@@ -129,7 +150,6 @@ export default function Dashboard() {
       alert(`Margem de 50% aplicada com sucesso a todos os ${products.length} produtos!`);
     } catch (err) {
       console.error("Erro ao aplicar 50%:", err);
-      alert("Ocorreu um erro ao atualizar no banco de dados.");
       fetchProducts();
     }
 
@@ -137,15 +157,65 @@ export default function Dashboard() {
     setUploadProgress('');
   };
 
+  // --- CONTROLE DE EDIÇÃO SINCRONIZADA (PREÇO x MARGEM) ---
   const startEditing = (product) => {
     setEditingId(product.id);
+    const cost = Number(product.cost) || 0;
+    const marginVal = product.margin !== null ? Number(product.margin) : 0;
+    
+    let currentPrice = '';
+    if (marginVal > 0 && cost > 0) {
+      if (calculationMode === 'markup') {
+        currentPrice = (cost + (cost * (marginVal / 100))).toFixed(2);
+      } else {
+        currentPrice = (marginVal < 100 ? cost / (1 - (marginVal / 100)) : cost + (cost * (marginVal / 100))).toFixed(2);
+      }
+    }
+
     setEditForm({
       name: product.name,
       category: product.category || 'Geral',
       stock: product.stock !== undefined && product.stock !== null ? product.stock : 0,
       cost: product.cost,
-      margin: product.margin !== null ? product.margin : ''
+      margin: product.margin !== null ? product.margin : '',
+      price: currentPrice
     });
+  };
+
+  // Alteração de Preço Sugerido dentro do modo edição (recalcula a margem em tempo real)
+  const handleEditPriceChange = (val) => {
+    const rawPrice = String(val).replace(',', '.');
+    const numPrice = parseFloat(rawPrice);
+    const numCost = parseFloat(String(editForm.cost).replace(',', '.')) || 0;
+
+    let calcMargin = editForm.margin;
+    if (!isNaN(numPrice) && numPrice > 0 && numCost > 0) {
+      if (calculationMode === 'markup') {
+        calcMargin = (((numPrice - numCost) / numCost) * 100).toFixed(3);
+      } else {
+        calcMargin = (((numPrice - numCost) / numPrice) * 100).toFixed(3);
+      }
+    }
+
+    setEditForm(prev => ({ ...prev, price: val, margin: calcMargin }));
+  };
+
+  // Alteração de Margem dentro do modo edição (recalcula o preço sugerido em tempo real)
+  const handleEditMarginChange = (val) => {
+    const rawMargin = String(val).replace(',', '.');
+    const numMargin = parseFloat(rawMargin);
+    const numCost = parseFloat(String(editForm.cost).replace(',', '.')) || 0;
+
+    let calcPrice = editForm.price;
+    if (!isNaN(numMargin) && numMargin > 0 && numCost > 0) {
+      if (calculationMode === 'markup') {
+        calcPrice = (numCost + (numCost * (numMargin / 100))).toFixed(2);
+      } else {
+        calcPrice = (numMargin < 100 ? numCost / (1 - (numMargin / 100)) : numCost + (numCost * (numMargin / 100))).toFixed(2);
+      }
+    }
+
+    setEditForm(prev => ({ ...prev, margin: val, price: calcPrice }));
   };
 
   const cancelEditing = () => {
@@ -440,7 +510,6 @@ export default function Dashboard() {
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading} />
           </label>
 
-          {/* NOVO BOTÃO: APLICAR 50% EM TODOS OS PRODUTOS */}
           <button 
             onClick={handleApplyFiftyPercentAll}
             disabled={uploading || products.length === 0}
@@ -519,7 +588,7 @@ export default function Dashboard() {
             <DollarSign className="text-blue-400" size={20} />
           </div>
           <p className="text-2xl font-bold text-gray-100">
-            R$ {totalCostInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            R$ {totalCostInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}[cite: 17]
           </p>
           <p className="text-xs text-gray-500 mt-1">Custo total das mercadorias</p>
         </motion.div>
@@ -530,10 +599,10 @@ export default function Dashboard() {
             <TrendingUp className="text-emerald-400" size={20} />
           </div>
           <p className="text-2xl font-bold text-emerald-400">
-            R$ {totalStockProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            R$ {totalStockProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}[cite: 17]
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Venda total: <strong className="text-gray-300">R$ {totalSalesValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            Venda total: <strong className="text-gray-300">R$ {totalSalesValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>[cite: 17]
           </p>
         </motion.div>
 
@@ -542,8 +611,8 @@ export default function Dashboard() {
             <h3 className="text-red-400 font-medium text-xs uppercase tracking-wider">Revisar Margem</h3>
             <AlertCircle className="text-red-500" size={20} />
           </div>
-          <p className="text-3xl font-bold text-red-500">{productsWithoutMargin.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Produtos sem margem ou a 0%</p>
+          <p className="text-3xl font-bold text-red-500">{productsWithoutMargin.length}[cite: 17]</p>
+          <p className="text-xs text-gray-500 mt-1">Produtos sem margem ou a 0%[cite: 17]</p>
         </motion.div>
       </div>
 
@@ -558,13 +627,13 @@ export default function Dashboard() {
             <h2 className="text-xl font-bold">Listagem de Margens e Estoque</h2>
             {selectedCategory !== 'todas' && (
               <span className="text-xs bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-md border border-amber-500/30">
-                Categoria: {selectedCategory}
+                Categoria: {selectedCategory}[cite: 17]
               </span>
             )}
           </div>
           {(searchTerm || selectedCategory !== 'todas') && (
             <span className="text-xs text-gray-400 bg-neutral-800 px-3 py-1 rounded-full border border-neutral-700">
-              Exibindo: {filteredProducts.length} de {products.length}
+              Exibindo: {filteredProducts.length} de {products.length}[cite: 17]
             </span>
           )}
         </div>
@@ -579,7 +648,7 @@ export default function Dashboard() {
                 <th className="p-4">Margem (%)</th>
                 <th className="p-4">Preço Sugerido</th>
                 <th className="p-4 text-emerald-400">Lucro do Lote</th>
-                <th className="p-4 no-print text-center">Ações</th>
+                <th className="p-4 no-print text-center">Definir Preço</th>
               </tr>
             </thead>
             <tbody>
@@ -616,6 +685,7 @@ export default function Dashboard() {
 
                   return (
                     <tr key={product.id} className={`border-b border-neutral-800/60 hover:bg-white/5 transition-colors ${isEditing ? 'bg-white/5' : ''}`}>
+                      {/* Produto */}
                       <td className="p-4 font-medium">
                         {isEditing ? (
                           <input 
@@ -626,10 +696,10 @@ export default function Dashboard() {
                           />
                         ) : (
                           <div className="flex items-center gap-2">
-                            <span>{product.name}</span>
+                            <span>{product.name}[cite: 17]</span>
                             {product.is_new && (
                               <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full border border-emerald-500/30 uppercase font-bold tracking-wider">
-                                Novo
+                                Novo[cite: 17]
                               </span>
                             )}
                             {(!product.margin || product.margin === 0) && (
@@ -641,6 +711,7 @@ export default function Dashboard() {
                         )}
                       </td>
 
+                      {/* Categoria */}
                       <td className="p-4">
                         {isEditing ? (
                           <input 
@@ -651,11 +722,12 @@ export default function Dashboard() {
                           />
                         ) : (
                           <span className="text-xs bg-neutral-800 text-neutral-300 px-2 py-1 rounded border border-neutral-700">
-                            {product.category || 'Geral'}
+                            {product.category || 'Geral'}[cite: 17]
                           </span>
                         )}
                       </td>
 
+                      {/* Estoque */}
                       <td className="p-4 text-center">
                         {isEditing ? (
                           <input 
@@ -667,58 +739,76 @@ export default function Dashboard() {
                           />
                         ) : (
                           <span className="font-mono text-sm text-gray-200">
-                            {stockQty.toLocaleString('pt-BR')} un
+                            {stockQty.toLocaleString('pt-BR')} un[cite: 17]
                           </span>
                         )}
                       </td>
                       
+                      {/* Custo Base */}
                       <td className="p-4 text-gray-300 font-mono text-sm">
                         {isEditing ? (
                           <input 
                             type="number" 
-                            step="0.01"
+                            step="0.001"
                             value={editForm.cost} 
                             onChange={(e) => setEditForm({ ...editForm, cost: e.target.value })}
                             className="w-24 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
                           />
                         ) : (
-                          `R$ ${cost.toFixed(2)}`
+                          `R$ ${cost.toFixed(2)}`[cite: 17]
                         )}
                       </td>
                       
+                      {/* Margem (%) - sincronizada bidirecionalmente no modo edição */}
                       <td className="p-4">
                         {isEditing ? (
                           <input 
                             type="number" 
                             step="0.001"
                             value={editForm.margin} 
-                            onChange={(e) => setEditForm({ ...editForm, margin: e.target.value })}
-                            placeholder="50%"
+                            onChange={(e) => handleEditMarginChange(e.target.value)}
+                            placeholder="%"
                             className="w-20 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
                           />
                         ) : (
                           marginVal > 0 ? (
-                            <span className="text-amber-400 font-bold">{marginVal}%</span>
+                            <span className="text-amber-400 font-bold">{marginVal}%</span>[cite: 17]
                           ) : (
                             <span className="text-gray-500 italic">0%</span>
                           )
                         )}
                       </td>
                       
+                      {/* Preço Sugerido - sincronizado bidirecionalmente no modo edição */}
                       <td className="p-4 font-mono text-sm">
-                        {!isEditing && marginVal > 0
-                          ? <span className="text-gray-200">R$ {suggestedPrice.toFixed(2)}</span>
-                          : <span className="text-gray-600">-</span>
-                        }
+                        {isEditing ? (
+                          <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2 py-1">
+                            <span className="text-gray-400 text-xs mr-1">R$</span>
+                            <input 
+                              type="number" 
+                              step="0.01"
+                              value={editForm.price} 
+                              onChange={(e) => handleEditPriceChange(e.target.value)}
+                              placeholder="0.00"
+                              className="w-20 bg-transparent text-sm text-emerald-400 font-semibold outline-none"
+                            />
+                          </div>
+                        ) : (
+                          marginVal > 0
+                            ? <span className="text-gray-200">R$ {suggestedPrice.toFixed(2)}</span>[cite: 17]
+                            : <span className="text-gray-600">-</span>
+                        )}
                       </td>
 
+                      {/* Lucro do Lote */}
                       <td className="p-4 font-mono text-sm font-semibold">
                         {!isEditing && marginVal > 0
-                          ? <span className="text-emerald-400">R$ {lotProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          ? <span className="text-emerald-400">R$ {lotProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>[cite: 17]
                           : <span className="text-gray-600">-</span>
                         }
                       </td>
                       
+                      {/* Ações com Campo Rápido de Preço em R$ */}
                       <td className="p-4 no-print">
                         {isEditing ? (
                           <div className="flex items-center justify-center gap-2">
@@ -731,15 +821,29 @@ export default function Dashboard() {
                           </div>
                         ) : (
                           <div className="flex items-center justify-center gap-2">
-                            <input 
-                              type="number" 
-                              step="0.01"
-                              placeholder="%" 
-                              className="w-16 bg-black border border-neutral-700 rounded px-2.5 py-1 text-sm outline-none focus:border-amber-500"
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSetMargin(product.id, e.target.value);
-                              }}
-                            />
+                            {/* Caixa rápida de Preço Sugerido em R$ */}
+                            <div className="flex items-center bg-black border border-neutral-700 rounded px-2 py-1 focus-within:border-amber-500 transition-colors" title="Digite o Preço Sugerido em R$ e aperte Enter">
+                              <span className="text-gray-500 text-xs mr-1 font-semibold">R$</span>
+                              <input 
+                                type="number" 
+                                step="0.01"
+                                placeholder="0,00" 
+                                className="w-16 bg-transparent text-sm outline-none text-white placeholder:text-gray-600 font-mono"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleSetPrice(product.id, e.target.value);
+                                    e.target.value = '';
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  if (e.target.value) {
+                                    handleSetPrice(product.id, e.target.value);
+                                    e.target.value = '';
+                                  }
+                                }}
+                              />
+                            </div>
+
                             <button 
                               onClick={() => startEditing(product)} 
                               className="p-1.5 text-gray-400 hover:text-amber-400 hover:bg-amber-400/10 rounded transition-colors" 
