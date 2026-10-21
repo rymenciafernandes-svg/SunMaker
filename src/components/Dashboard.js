@@ -4,7 +4,8 @@ import {
   Upload, Download, Trash2, TrendingUp, AlertCircle, Package, 
   Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap, 
   Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
-  BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, Lock, Building2
+  BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, Lock, Building2,
+  Settings, Sliders, Printer
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -21,7 +22,7 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
 
-  // Modais Institucionais e Suporte
+  // Modais Institucionais
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
@@ -31,16 +32,20 @@ export default function App() {
   const [readTerms, setReadTerms] = useState(false);
   const [readPrivacy, setReadPrivacy] = useState(false);
 
-  // Modal de Gerenciamento de Usuários
-  const [showUsersModal, setShowUsersModal] = useState(false);
+  // Modal Central de Configurações
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [activeSettingsTab, setActiveSettingsTab] = useState('usuarios');
+
+  // Configurações - Usuários
   const [usersList, setUsersList] = useState([]);
   const [newUserName, setNewUserName] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
   const [newUserRole, setNewUserRole] = useState('operador');
-
-  // Redefinição de Senha no Painel
   const [editingPasswordUserId, setEditingPasswordUserId] = useState(null);
   const [updatedPasswordValue, setUpdatedPasswordValue] = useState('');
+
+  // Configurações - Margem Global
+  const [globalMarginValue, setGlobalMarginValue] = useState('50');
 
   // Estados do Dashboard
   const [products, setProducts] = useState([]);
@@ -102,7 +107,6 @@ export default function App() {
     setShowPrivacyModal(true);
   };
 
-  // --- AUTENTICAÇÃO COM FILTRO MULTI-EMPRESA ---
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
@@ -157,9 +161,9 @@ export default function App() {
     setUsername('');
     setPassword('');
     setProducts([]);
+    setShowSettingsModal(false);
   };
 
-  // --- CONSULTAS ISOLADAS POR EMPRESA ---
   const fetchProducts = async (companyId) => {
     const targetCompany = companyId || currentUser?.company_id;
     if (!targetCompany) return;
@@ -188,11 +192,6 @@ export default function App() {
       .order('created_at', { ascending: false });
 
     if (data) setUsersList(data);
-  };
-
-  const handleOpenUsersModal = () => {
-    fetchUsers();
-    setShowUsersModal(true);
   };
 
   const handleCreateNewUser = async (e) => {
@@ -360,23 +359,27 @@ export default function App() {
     }
   };
 
-  const handleApplyFiftyPercentAll = async () => {
-    if (products.length === 0 || !currentUser?.company_id) return;
+  const handleApplyCustomMarginAll = async () => {
+    const margin = parseFloat(globalMarginValue);
+    if (isNaN(margin) || margin <= 0 || products.length === 0 || !currentUser?.company_id) {
+      alert("Por favor, informe uma porcentagem de margem válida maior que zero.");
+      return;
+    }
 
     const confirm = window.confirm(
-      `Deseja aplicar a margem de 50% em todos os ${products.length} produtos cadastrados da sua empresa?`
+      `Deseja aplicar a margem de ${margin}% em todos os ${products.length} produtos cadastrados da sua empresa?`
     );
     if (!confirm) return;
 
     setUploading(true);
-    setUploadProgress('Aplicando 50% em todos os produtos...');
+    setUploadProgress(`Aplicando ${margin}% em todos os produtos...`);
 
-    setProducts(products.map(p => ({ ...p, margin: 50, is_new: false })));
+    setProducts(products.map(p => ({ ...p, margin, is_new: false })));
 
     try {
       const { error } = await supabase
         .from('products')
-        .update({ margin: 50, is_new: false })
+        .update({ margin, is_new: false })
         .eq('company_id', currentUser.company_id);
 
       if (error) {
@@ -388,20 +391,27 @@ export default function App() {
           const batchIds = idsToUpdate.slice(i, i + 200);
           await supabase
             .from('products')
-            .update({ margin: 50, is_new: false })
+            .update({ margin, is_new: false })
             .in('id', batchIds)
             .eq('company_id', currentUser.company_id);
         }
       }
 
-      alert(`Margem de 50% aplicada com sucesso em todos os ${products.length} produtos da sua empresa.`);
+      alert(`Margem de ${margin}% aplicada com sucesso em todos os ${products.length} produtos.`);
     } catch (err) {
-      console.error("Erro ao aplicar 50%:", err);
+      console.error("Erro ao aplicar margem global:", err);
       fetchProducts(currentUser.company_id);
     }
 
     setUploading(false);
     setUploadProgress('');
+  };
+
+  const handlePrintPDF = () => {
+    setShowSettingsModal(false);
+    setTimeout(() => {
+      window.print();
+    }, 200);
   };
 
   const startEditing = (product) => {
@@ -657,10 +667,6 @@ export default function App() {
     reader.readAsText(file, "ISO-8859-1");
   };
 
-  const handlePrintPDF = () => {
-    window.print();
-  };
-
   const categoriesList = ['todas', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
 
   const filteredProducts = products.filter(p => {
@@ -880,7 +886,7 @@ export default function App() {
                     </p>
                   </div>
 
-                  <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
+                  <div className="bg-neutral-950 p-4 rounded-xl border border-emerald-400 font-semibold mb-1.5">
                     <div className="flex items-center gap-2 text-emerald-400 font-semibold mb-1.5">
                       <Calculator size={16} />
                       <h4>Definição de preços e cálculo automático</h4>
@@ -906,7 +912,7 @@ export default function App() {
                       <h4>Esquecimento de senha e suporte operacional</h4>
                     </div>
                     <p className="text-gray-300 text-xs leading-relaxed">
-                      Por motivos de segurança interna, senhas não são redefinidas publicamente. Caso esqueça sua credencial de acesso, solicite a um operador com perfil Administrador para redefinir sua senha diretamente na aba "Usuários" do painel.
+                      Por motivos de segurança interna, senhas não são redefinidas publicamente. Caso esqueça sua credencial de acesso, solicite a um operador com perfil Administrador para redefinir sua senha diretamente na aba "Usuários" das Configurações.
                     </p>
                   </div>
                 </div>
@@ -1084,6 +1090,7 @@ export default function App() {
   // ==========================================
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans text-white">
+      {/* CABEÇALHO LIMPO E PROFISSIONAL */}
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8 border-b border-gray-800 pb-6 no-print">
         <div>
           <motion.h1 
@@ -1093,27 +1100,13 @@ export default function App() {
           >
             SunMaker
           </motion.h1>
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <p className="text-gray-400 text-sm">Dashboard de Inteligência</p>
-            <span className="bg-neutral-800 px-2 py-0.5 rounded text-[10px] uppercase text-amber-500 font-bold tracking-wider">
-              {calculationMode === 'markup' ? 'Modo: Markup' : 'Modo: Margem Real'}
-            </span>
-            {currentUser && (
-              <>
-                <span className="bg-emerald-950/60 text-emerald-400 border border-emerald-900/50 px-2 py-0.5 rounded text-[10px] font-medium flex items-center gap-1">
-                  <Shield size={10} />
-                  {currentUser.username}
-                </span>
-                <span className="bg-blue-950/60 text-blue-400 border border-blue-900/50 px-2 py-0.5 rounded text-[10px] font-medium flex items-center gap-1">
-                  <Building2 size={10} />
-                  {currentUser.company_id}
-                </span>
-              </>
-            )}
-          </div>
+          <p className="text-gray-400 mt-1 text-sm">
+            Dashboard de Inteligência
+          </p>
         </div>
         
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          {/* Pesquisa */}
           <div className="relative flex-1 sm:w-60">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
             <input 
@@ -1125,6 +1118,7 @@ export default function App() {
             />
           </div>
 
+          {/* Categorias */}
           <div className="relative flex items-center">
             <Filter className="absolute left-3 text-gray-500 pointer-events-none" size={15} />
             <select
@@ -1139,48 +1133,24 @@ export default function App() {
             </select>
           </div>
 
+          {/* Upload do Relatório */}
           <label className="cursor-pointer bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium">
             <Upload size={16} />
             <span>{uploading && uploadProgress !== '' ? uploadProgress : "Upload Relatório"}</span>
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading} />
           </label>
 
+          {/* Botão Central de Configurações */}
           <button 
-            onClick={handleApplyFiftyPercentAll}
-            disabled={uploading || products.length === 0}
-            className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm disabled:opacity-40"
-            title="Substituir e definir margem de 50% em todos os produtos cadastrados da sua empresa"
+            onClick={() => { fetchUsers(); setShowSettingsModal(true); }}
+            className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm"
+            title="Abrir Central de Configurações"
           >
-            <Zap size={15} className="text-amber-400" />
-            Aplicar 50% em Todos
+            <Settings size={16} />
+            Configurações
           </button>
 
-          <button 
-            onClick={handleClearAllData} 
-            disabled={uploading}
-            className={`border border-red-900 font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all text-sm ${uploading ? 'bg-neutral-800 text-neutral-500' : 'bg-red-950/50 text-red-500 hover:bg-red-900 hover:text-white'}`}
-          >
-            <Trash2 size={16} />
-            Limpar Tudo
-          </button>
-
-          <button 
-            onClick={handlePrintPDF} 
-            className="bg-amber-500 text-black font-bold px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-amber-400 transition-all text-sm"
-          >
-            <Download size={16} />
-            Exportar PDF
-          </button>
-
-          <button 
-            onClick={handleOpenUsersModal}
-            className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-amber-400 font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm"
-            title="Gerenciar e cadastrar logins"
-          >
-            <Users size={16} />
-            Usuários
-          </button>
-
+          {/* Botão Sair */}
           <button 
             onClick={handleLogout}
             className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm"
@@ -1192,142 +1162,356 @@ export default function App() {
         </div>
       </header>
 
-      {/* MODAL DE GERENCIAMENTO DE USUÁRIOS */}
+      {/* MODAL CENTRAL DE CONFIGURAÇÕES */}
       <AnimatePresence>
-        {showUsersModal && (
+        {showSettingsModal && (
           <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl"
+              className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row max-h-[85vh]"
             >
-              <div className="p-6 border-b border-neutral-800 flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <Users className="text-amber-500" size={20} />
-                  <h3 className="text-lg font-bold text-white">Controle de Usuários e Logins</h3>
+              {/* Menu Lateral de Abas */}
+              <div className="w-full md:w-56 bg-neutral-950 p-4 border-b md:border-b-0 md:border-r border-neutral-800 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 pb-4 mb-3 border-b border-neutral-800 text-white font-bold text-sm">
+                    <Settings className="text-amber-500" size={18} />
+                    <span>Configurações</span>
+                  </div>
+
+                  <nav className="space-y-1">
+                    <button
+                      onClick={() => setActiveSettingsTab('usuarios')}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${activeSettingsTab === 'usuarios' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-gray-400 hover:bg-neutral-900 hover:text-white'}`}
+                    >
+                      <Users size={15} />
+                      Usuários
+                    </button>
+
+                    <button
+                      onClick={() => setActiveSettingsTab('exportacao')}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${activeSettingsTab === 'exportacao' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-gray-400 hover:bg-neutral-900 hover:text-white'}`}
+                    >
+                      <Download size={15} />
+                      Exportação
+                    </button>
+
+                    <button
+                      onClick={() => setActiveSettingsTab('margens')}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${activeSettingsTab === 'margens' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-gray-400 hover:bg-neutral-900 hover:text-white'}`}
+                    >
+                      <Sliders size={15} />
+                      Margens e Regras
+                    </button>
+
+                    <button
+                      onClick={() => setActiveSettingsTab('empresa')}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${activeSettingsTab === 'empresa' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-gray-400 hover:bg-neutral-900 hover:text-white'}`}
+                    >
+                      <Building2 size={15} />
+                      Empresa e Conta
+                    </button>
+                  </nav>
                 </div>
-                <button onClick={() => setShowUsersModal(false)} className="text-gray-400 hover:text-white p-1 rounded-lg">
-                  <X size={18} />
-                </button>
+
+                <div className="pt-4 mt-4 border-t border-neutral-800 text-[11px] text-gray-500">
+                  SunMaker v1.2
+                </div>
               </div>
 
-              <div className="p-6 space-y-6">
-                <form onSubmit={handleCreateNewUser} className="bg-black/40 border border-neutral-800 p-4 rounded-xl space-y-3">
-                  <p className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <UserPlus size={14} className="text-emerald-400" />
-                    Cadastrar Novo Acesso
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input 
-                      type="text" 
-                      placeholder="Login (Ex: caixa1, gerente)" 
-                      value={newUserName}
-                      onChange={(e) => setNewUserName(e.target.value)}
-                      className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500"
-                      required
-                    />
-                    <input 
-                      type="password" 
-                      placeholder="Senha" 
-                      value={newUserPass}
-                      onChange={(e) => setNewUserPass(e.target.value)}
-                      className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500"
-                      required
-                    />
-                  </div>
-                  <div className="flex justify-between items-center pt-1">
-                    <select
-                      value={newUserRole}
-                      onChange={(e) => setNewUserRole(e.target.value)}
-                      className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-gray-300 outline-none"
-                    >
-                      <option value="operador">Perfil: Operador</option>
-                      <option value="admin">Perfil: Administrador</option>
-                    </select>
-
-                    <button 
-                      type="submit"
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1"
-                    >
-                      Salvar Novo Login
+              {/* Conteúdo da Aba Ativa */}
+              <div className="flex-1 p-6 overflow-y-auto flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-center pb-4 mb-5 border-b border-neutral-800">
+                    <h3 className="text-base font-bold text-white capitalize">
+                      {activeSettingsTab === 'usuarios' && "Gerenciamento de Usuários e Logins"}
+                      {activeSettingsTab === 'exportacao' && "Exportação e Relatórios"}
+                      {activeSettingsTab === 'margens' && "Regras de Margem e Base de Dados"}
+                      {activeSettingsTab === 'empresa' && "Informações da Empresa e Sessão"}
+                    </h3>
+                    <button onClick={() => setShowSettingsModal(false)} className="text-gray-400 hover:text-white p-1 rounded-lg">
+                      <X size={18} />
                     </button>
                   </div>
-                </form>
 
-                <div>
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                    Logins Cadastrados ({usersList.length})
-                  </p>
-                  <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                    {usersList.map(u => (
-                      <div key={u.id} className="bg-neutral-950 p-3 rounded-lg border border-neutral-800">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <p className="text-sm font-semibold text-white flex items-center gap-2">
-                              {u.username}
-                              <span className="text-[10px] bg-neutral-800 text-gray-400 px-2 py-0.5 rounded capitalize">
-                                {u.role || 'operador'}
-                              </span>
-                            </p>
-                            <p className="text-[11px] text-gray-500">
-                              Cadastrado em: {new Date(u.created_at).toLocaleDateString('pt-BR')}
-                            </p>
+                  {/* ABA: USUÁRIOS */}
+                  {activeSettingsTab === 'usuarios' && (
+                    <div className="space-y-6">
+                      <form onSubmit={handleCreateNewUser} className="bg-black/40 border border-neutral-800 p-4 rounded-xl space-y-3">
+                        <p className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <UserPlus size={14} className="text-emerald-400" />
+                          Cadastrar Novo Acesso
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <input 
+                            type="text" 
+                            placeholder="Login (Ex: caixa1, gerente)" 
+                            value={newUserName}
+                            onChange={(e) => setNewUserName(e.target.value)}
+                            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500"
+                            required
+                          />
+                          <input 
+                            type="password" 
+                            placeholder="Senha" 
+                            value={newUserPass}
+                            onChange={(e) => setNewUserPass(e.target.value)}
+                            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500"
+                            required
+                          />
+                        </div>
+                        <div className="flex justify-between items-center pt-1">
+                          <select
+                            value={newUserRole}
+                            onChange={(e) => setNewUserRole(e.target.value)}
+                            className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-gray-300 outline-none"
+                          >
+                            <option value="operador">Perfil: Operador</option>
+                            <option value="admin">Perfil: Administrador</option>
+                          </select>
+
+                          <button 
+                            type="submit"
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1"
+                          >
+                            Salvar Novo Login
+                          </button>
+                        </div>
+                      </form>
+
+                      <div>
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                          Logins Cadastrados ({usersList.length})
+                        </p>
+                        <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
+                          {usersList.map(u => (
+                            <div key={u.id} className="bg-neutral-950 p-3 rounded-lg border border-neutral-800">
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <p className="text-sm font-semibold text-white flex items-center gap-2">
+                                    {u.username}
+                                    <span className="text-[10px] bg-neutral-800 text-gray-400 px-2 py-0.5 rounded capitalize">
+                                      {u.role || 'operador'}
+                                    </span>
+                                  </p>
+                                  <p className="text-[11px] text-gray-500">
+                                    Cadastrado em: {new Date(u.created_at).toLocaleDateString('pt-BR')}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <button 
+                                    onClick={() => {
+                                      if (editingPasswordUserId === u.id) {
+                                        setEditingPasswordUserId(null);
+                                        setUpdatedPasswordValue('');
+                                      } else {
+                                        setEditingPasswordUserId(u.id);
+                                        setUpdatedPasswordValue('');
+                                      }
+                                    }}
+                                    className="p-1.5 text-amber-400 hover:bg-amber-400/10 rounded transition-colors"
+                                    title="Redefinir senha deste usuário"
+                                  >
+                                    <Key size={16} />
+                                  </button>
+                                  {u.username !== 'admin' && (
+                                    <button 
+                                      onClick={() => handleDeleteUser(u.id, u.username)}
+                                      className="p-1.5 text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                      title="Remover acesso deste usuário"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {editingPasswordUserId === u.id && (
+                                <div className="mt-3 pt-3 border-t border-neutral-800 flex items-center gap-2">
+                                  <input 
+                                    type="password"
+                                    placeholder="Nova senha (min. 4 dígitos)"
+                                    value={updatedPasswordValue}
+                                    onChange={(e) => setUpdatedPasswordValue(e.target.value)}
+                                    className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2.5 py-1 text-xs text-white outline-none focus:border-amber-500"
+                                  />
+                                  <button
+                                    onClick={() => handleUpdateUserPassword(u.id, u.username)}
+                                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded text-xs font-bold transition-all"
+                                  >
+                                    Confirmar
+                                  </button>
+                                  <button
+                                    onClick={() => { setEditingPasswordUserId(null); setUpdatedPasswordValue(''); }}
+                                    className="bg-neutral-800 hover:bg-neutral-700 text-gray-400 px-2.5 py-1 rounded text-xs transition-all"
+                                  >
+                                    Cancelar
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ABA: EXPORTAÇÃO */}
+                  {activeSettingsTab === 'exportacao' && (
+                    <div className="space-y-5 text-sm">
+                      <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 space-y-3">
+                        <div className="flex items-center gap-2 text-amber-400 font-semibold">
+                          <Printer size={18} />
+                          <h4>Relatório Operacional em PDF</h4>
+                        </div>
+                        <p className="text-gray-300 text-xs leading-relaxed">
+                          O arquivo PDF consolida todos os produtos da sua empresa, discriminando o estoque físico atual, custo unitário, margem calculada e valor sugerido de venda de acordo com os filtros de busca aplicados.
+                        </p>
+                        <div className="grid grid-cols-2 gap-3 pt-2 text-xs">
+                          <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800">
+                            <span className="text-gray-500 block">Total de Itens:</span>
+                            <span className="font-bold text-white text-sm">{products.length} itens</span>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <button 
-                              onClick={() => {
-                                if (editingPasswordUserId === u.id) {
-                                  setEditingPasswordUserId(null);
-                                  setUpdatedPasswordValue('');
-                                } else {
-                                  setEditingPasswordUserId(u.id);
-                                  setUpdatedPasswordValue('');
-                                }
-                              }}
-                              className="p-1.5 text-amber-400 hover:bg-amber-400/10 rounded transition-colors"
-                              title="Redefinir senha deste usuário"
-                            >
-                              <Key size={16} />
-                            </button>
-                            {u.username !== 'admin' && (
-                              <button 
-                                onClick={() => handleDeleteUser(u.id, u.username)}
-                                className="p-1.5 text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                                title="Remover acesso deste usuário"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            )}
+                          <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800">
+                            <span className="text-gray-500 block">Estoque Total:</span>
+                            <span className="font-bold text-white text-sm">{totalStockUnits.toLocaleString('pt-BR')} unidades</span>
                           </div>
                         </div>
 
-                        {editingPasswordUserId === u.id && (
-                          <div className="mt-3 pt-3 border-t border-neutral-800 flex items-center gap-2">
-                            <input 
-                              type="password"
-                              placeholder="Nova senha (min. 4 dígitos)"
-                              value={updatedPasswordValue}
-                              onChange={(e) => setUpdatedPasswordValue(e.target.value)}
-                              className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2.5 py-1 text-xs text-white outline-none focus:border-amber-500"
-                            />
-                            <button
-                              onClick={() => handleUpdateUserPassword(u.id, u.username)}
-                              className="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded text-xs font-bold transition-all"
-                            >
-                              Confirmar
-                            </button>
-                            <button
-                              onClick={() => { setEditingPasswordUserId(null); setUpdatedPasswordValue(''); }}
-                              className="bg-neutral-800 hover:bg-neutral-700 text-gray-400 px-2.5 py-1 rounded text-xs transition-all"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        )}
+                        <button 
+                          onClick={handlePrintPDF}
+                          className="w-full bg-amber-500 hover:bg-amber-400 text-black font-bold py-2.5 rounded-lg text-xs flex items-center justify-center gap-2 transition-all mt-2"
+                        >
+                          <Download size={15} />
+                          Gerar e Baixar PDF Agora
+                        </button>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
+
+                  {/* ABA: MARGENS E REGRAS */}
+                  {activeSettingsTab === 'margens' && (
+                    <div className="space-y-5 text-sm">
+                      {/* Aplicar Margem em Massa */}
+                      <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 space-y-3">
+                        <div className="flex items-center gap-2 text-amber-400 font-semibold">
+                          <Zap size={18} />
+                          <h4>Aplicação de Margem Global em Massa</h4>
+                        </div>
+                        <p className="text-gray-300 text-xs leading-relaxed">
+                          Defina uma margem padrão para atualizar simultaneamente todos os produtos da sua empresa no banco de dados.
+                        </p>
+                        
+                        <div className="flex items-center gap-3 pt-1">
+                          <div className="flex items-center bg-black border border-neutral-700 rounded-lg px-3 py-1.5 focus-within:border-amber-500">
+                            <span className="text-gray-400 text-xs mr-2 font-semibold">%</span>
+                            <input 
+                              type="number"
+                              step="0.1"
+                              value={globalMarginValue}
+                              onChange={(e) => setGlobalMarginValue(e.target.value)}
+                              className="w-20 bg-transparent text-sm text-white outline-none font-bold"
+                            />
+                          </div>
+
+                          <button
+                            onClick={handleApplyCustomMarginAll}
+                            disabled={uploading || products.length === 0}
+                            className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-4 py-2 rounded-lg text-xs transition-all disabled:opacity-40"
+                          >
+                            Aplicar em Todos
+                          </button>
+
+                          <button
+                            onClick={() => { setGlobalMarginValue('50'); }}
+                            className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 px-3 py-2 rounded-lg text-xs font-medium"
+                          >
+                            50% Padrão
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Modo de Precificação */}
+                      <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 space-y-2">
+                        <div className="flex items-center gap-2 text-blue-400 font-semibold">
+                          <Calculator size={18} />
+                          <h4>Modo de Precificação Ativo</h4>
+                        </div>
+                        <p className="text-gray-300 text-xs leading-relaxed">
+                          Modo detectado pelo relatório: <strong className="text-amber-400 uppercase">{calculationMode === 'markup' ? 'Markup (Acréscimo sobre custo)' : 'Margem Real (Lucro sobre venda)'}</strong>.
+                        </p>
+                      </div>
+
+                      {/* Zona de Perigo */}
+                      <div className="bg-red-950/20 border border-red-900/50 p-4 rounded-xl space-y-2">
+                        <div className="flex items-center gap-2 text-red-400 font-semibold">
+                          <Trash2 size={16} />
+                          <h4>Limpeza de Dados da Empresa</h4>
+                        </div>
+                        <p className="text-gray-400 text-xs leading-relaxed">
+                          Esta ação excluirá permanentemente todos os produtos cadastrados da sua empresa, mantendo intactos os usuários e os dados de outros estabelecimentos.
+                        </p>
+                        <button
+                          onClick={handleClearAllData}
+                          disabled={uploading || products.length === 0}
+                          className="bg-red-900 hover:bg-red-800 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-40"
+                        >
+                          Limpar Todos os Produtos
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ABA: EMPRESA E CONTA */}
+                  {activeSettingsTab === 'empresa' && (
+                    <div className="space-y-4 text-xs">
+                      <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 space-y-3">
+                        <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
+                          <Building2 size={18} />
+                          <h4>Identificação da Conta</h4>
+                        </div>
+
+                        <div className="space-y-2 text-gray-300">
+                          <div className="flex justify-between py-1 border-b border-neutral-900">
+                            <span className="text-gray-500">Usuário Conectado:</span>
+                            <span className="font-semibold text-white">{currentUser?.username}</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-neutral-900">
+                            <span className="text-gray-500">Perfil de Acesso:</span>
+                            <span className="font-semibold text-amber-400 capitalize">{currentUser?.role}</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-neutral-900">
+                            <span className="text-gray-500">Identificador da Empresa:</span>
+                            <span className="font-mono text-blue-400 font-semibold">{currentUser?.company_id}</span>
+                          </div>
+                          <div className="flex justify-between py-1">
+                            <span className="text-gray-500">Status da Sessão:</span>
+                            <span className="text-emerald-400 font-semibold">Ativa e Autenticada</span>
+                          </div>
+                        </div>
+
+                        <div className="pt-2">
+                          <button
+                            onClick={handleLogout}
+                            className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 font-medium px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition-all"
+                          >
+                            <LogOut size={14} className="text-gray-400" />
+                            Encerrar Sessão Desta Conta
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-4 border-t border-neutral-800 text-right mt-6">
+                  <button 
+                    onClick={() => setShowSettingsModal(false)}
+                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                  >
+                    Fechar
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -1335,6 +1519,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* ESTIMATIVA DE PERÍODO */}
       <motion.div 
         initial={{ opacity: 0 }} 
         animate={{ opacity: 1 }} 
@@ -1365,6 +1550,7 @@ export default function App() {
         </div>
       </motion.div>
 
+      {/* CARDS DE RESUMO FINANCEIRO */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8 no-print">
         <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 shadow-xl">
           <div className="flex items-center justify-between mb-3">
@@ -1412,6 +1598,7 @@ export default function App() {
         </motion.div>
       </div>
 
+      {/* LISTAGEM DE PRODUTOS */}
       <motion.div 
         initial={{ y: 20, opacity: 0 }} 
         animate={{ y: 0, opacity: 1 }} 
@@ -1572,7 +1759,7 @@ export default function App() {
                       
                       <td className="p-4 font-mono text-sm">
                         {isEditing ? (
-                          <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2 py-1">
+                          <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2.5 py-1">
                             <span className="text-gray-400 text-xs mr-1">R$</span>
                             <input 
                               type="number" 
