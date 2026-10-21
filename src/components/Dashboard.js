@@ -741,7 +741,7 @@ export default function App() {
 
   const categoriesList = ['todas', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
 
-  // Filtro Dinâmico por Texto e Categoria
+  // Filtro Dinâmico: recalcula tudo conforme a categoria e a busca ativa
   const filteredProducts = products.filter(p => {
     const term = searchTerm.toLowerCase();
     const matchesSearch = p.name.toLowerCase().includes(term) || 
@@ -750,7 +750,6 @@ export default function App() {
     return matchesSearch && matchesCategory;
   });
 
-  // Métricas calculadas estritamente com base nos produtos exibidos (filtrados)
   const productsWithoutMargin = filteredProducts.filter(p => p.margin === null || p.margin === undefined || p.margin === 0);
   const newProducts = filteredProducts.filter(p => p.is_new);
 
