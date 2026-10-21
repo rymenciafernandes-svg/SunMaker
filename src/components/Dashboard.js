@@ -8,20 +8,17 @@ import {
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
 
-// Imagem de fundo estilo rodovia/posto
 const LOGIN_BG_IMAGE = "https://images.unsplash.com/photo-1545459720-aac8509eb02c?q=80&w=1920&auto=format&fit=crop"; 
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Estados de Login e Cadastro
-  const [isRegisterMode, setIsRegisterMode] = useState(false);
+  // Estados de Login
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [authSuccess, setAuthSuccess] = useState('');
 
   // Modal de Gerenciamento de Usuários dentro do Dashboard
   const [showUsersModal, setShowUsersModal] = useState(false);
@@ -41,7 +38,6 @@ export default function App() {
   const [editForm, setEditForm] = useState({ name: '', category: '', stock: '', cost: '', margin: '', price: '' });
   const [calculationMode, setCalculationMode] = useState('markup');
 
-  // Checar sessão ativa
   useEffect(() => {
     const savedUser = localStorage.getItem('sunmaker_user');
     if (savedUser) {
@@ -55,12 +51,11 @@ export default function App() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
-    setAuthSuccess('');
 
     const cleanUser = username.trim().toLowerCase();
 
     // 1. Busca na tabela do Supabase
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('app_users')
       .select('*')
       .ilike('username', cleanUser)
@@ -87,38 +82,6 @@ export default function App() {
     }
 
     setAuthError('Usuário ou senha incorretos.');
-  };
-
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    setAuthError('');
-    setAuthSuccess('');
-
-    const cleanUser = username.trim().toLowerCase();
-    if (cleanUser.length < 3) {
-      setAuthError('O nome de usuário deve ter pelo menos 3 caracteres.');
-      return;
-    }
-    if (password.length < 4) {
-      setAuthError('A senha deve ter pelo menos 4 caracteres.');
-      return;
-    }
-
-    const { error } = await supabase.from('app_users').insert([
-      { username: cleanUser, password: password, role: 'operador' }
-    ]);
-
-    if (error) {
-      if (error.code === '23505') {
-        setAuthError('Este nome de usuário já está cadastrado.');
-      } else {
-        setAuthError('Erro ao cadastrar usuário: ' + error.message);
-      }
-    } else {
-      setAuthSuccess('Usuário cadastrado com sucesso! Já pode fazer login.');
-      setIsRegisterMode(false);
-      setPassword('');
-    }
   };
 
   const handleLogout = () => {
@@ -605,7 +568,7 @@ export default function App() {
   };
 
   // ==========================================
-  // RENDERIZAÇÃO: TELA DE LOGIN (ESTILO VIBRA)
+  // RENDERIZAÇÃO: TELA DE LOGIN (ESTILO VIBRA LIMPA)
   // ==========================================
   if (!isAuthenticated) {
     return (
@@ -622,15 +585,13 @@ export default function App() {
           className="relative z-10 w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-100 flex flex-col justify-between"
         >
           <div className="p-8 pb-6">
-            <div className="pb-5 border-b border-gray-200 mb-6 flex justify-between items-center">
-              <div>
-                <h1 className="text-3xl font-black italic tracking-tighter text-amber-500">
-                  SunMaker
-                </h1>
-                <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase mt-0.5">
-                  {isRegisterMode ? 'Cadastro de Novo Login' : 'Portal de Inteligência'}
-                </p>
-              </div>
+            <div className="pb-5 border-b border-gray-200 mb-6">
+              <h1 className="text-3xl font-black italic tracking-tighter text-amber-500">
+                SunMaker
+              </h1>
+              <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase mt-0.5">
+                Portal de Inteligência
+              </p>
             </div>
 
             {authError && (
@@ -639,13 +600,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {authSuccess && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-4 p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-medium text-center">
-                {authSuccess}
-              </motion.div>
-            )}
-
-            <form onSubmit={isRegisterMode ? handleRegister : handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <input 
                   type="text"
@@ -679,27 +634,17 @@ export default function App() {
                 type="submit"
                 className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3 rounded-lg text-sm tracking-wide shadow-md hover:shadow-lg transition-all"
               >
-                {isRegisterMode ? 'Criar Acesso' : 'Acessar'}
+                Acessar
               </button>
 
-              <div className="flex justify-between items-center text-xs pt-2">
-                <button
-                  type="button"
-                  onClick={() => { setIsRegisterMode(!isRegisterMode); setAuthError(''); setAuthSuccess(''); }}
-                  className="text-amber-600 hover:text-amber-700 font-semibold"
+              <div className="text-left pt-2">
+                <a 
+                  href="#" 
+                  onClick={(e) => { e.preventDefault(); alert("Entre em contato com o administrador do posto para resetar a sua senha."); }}
+                  className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
                 >
-                  {isRegisterMode ? '← Voltar para Login' : '+ Cadastrar novo usuário'}
-                </button>
-
-                {!isRegisterMode && (
-                  <a 
-                    href="#" 
-                    onClick={(e) => { e.preventDefault(); alert("Entre em contato com o administrador do posto para resetar a sua senha."); }}
-                    className="text-blue-600 hover:text-blue-800 underline font-medium"
-                  >
-                    Recuperação de senha
-                  </a>
-                )}
+                  Recuperação de senha
+                </a>
               </div>
             </form>
           </div>
@@ -810,7 +755,6 @@ export default function App() {
             Exportar PDF
           </button>
 
-          {/* BOTÃO GERENCIAR USUÁRIOS */}
           <button 
             onClick={handleOpenUsersModal}
             className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-amber-400 font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm"
@@ -820,7 +764,6 @@ export default function App() {
             Usuários
           </button>
 
-          {/* Botão Sair */}
           <button 
             onClick={handleLogout}
             className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm"
@@ -853,7 +796,6 @@ export default function App() {
               </div>
 
               <div className="p-6 space-y-6">
-                {/* Formulário Novo Usuário */}
                 <form onSubmit={handleCreateNewUser} className="bg-black/40 border border-neutral-800 p-4 rounded-xl space-y-3">
                   <p className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
                     <UserPlus size={14} className="text-emerald-400" />
@@ -896,7 +838,6 @@ export default function App() {
                   </div>
                 </form>
 
-                {/* Lista de Usuários Ativos */}
                 <div>
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
                     Logins Cadastrados ({usersList.length})
