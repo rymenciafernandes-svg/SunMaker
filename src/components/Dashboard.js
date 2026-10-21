@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Download, Trash2, TrendingUp, AlertCircle, Package, 
   Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap, 
-  Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield
+  Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key 
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -20,12 +20,16 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
 
-  // Modal de Gerenciamento de Usuários dentro do Dashboard
+  // Modal de Gerenciamento de Usuarios
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [usersList, setUsersList] = useState([]);
   const [newUserName, setNewUserName] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
   const [newUserRole, setNewUserRole] = useState('operador');
+
+  // Redefinicao de Senha no Painel
+  const [editingPasswordUserId, setEditingPasswordUserId] = useState(null);
+  const [updatedPasswordValue, setUpdatedPasswordValue] = useState('');
 
   // Estados do Dashboard
   const [products, setProducts] = useState([]);
@@ -47,14 +51,13 @@ export default function App() {
     }
   }, []);
 
-  // --- AUTENTICAÇÃO NO SUPABASE ---
+  // --- AUTENTICACAO NO SUPABASE ---
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
 
     const cleanUser = username.trim().toLowerCase();
 
-    // 1. Busca na tabela do Supabase
     const { data } = await supabase
       .from('app_users')
       .select('*')
@@ -71,7 +74,6 @@ export default function App() {
       return;
     }
 
-    // 2. Fallback emergencial caso o banco esteja inacessível
     if (cleanUser === 'admin' && password === 'copasul') {
       const adminObj = { username: 'admin', role: 'admin' };
       localStorage.setItem('sunmaker_user', JSON.stringify(adminObj));
@@ -81,7 +83,7 @@ export default function App() {
       return;
     }
 
-    setAuthError('Usuário ou senha incorretos.');
+    setAuthError('Usuario ou senha incorretos.');
   };
 
   const handleLogout = () => {
@@ -92,7 +94,7 @@ export default function App() {
     setPassword('');
   };
 
-  // --- GERENCIAMENTO DE USUÁRIOS NO DASHBOARD ---
+  // --- GERENCIAMENTO DE USUARIOS ---
   const fetchUsers = async () => {
     const { data } = await supabase.from('app_users').select('*').order('created_at', { ascending: false });
     if (data) setUsersList(data);
@@ -113,21 +115,42 @@ export default function App() {
     ]);
 
     if (error) {
-      alert("Erro ao cadastrar: " + (error.code === '23505' ? 'Nome de usuário já existe.' : error.message));
+      alert("Erro ao cadastrar: " + (error.code === '23505' ? 'Nome de usuario ja existe.' : error.message));
     } else {
-      alert(`Usuário "${cleanUser}" cadastrado com sucesso!`);
+      alert(`Usuario "${cleanUser}" cadastrado com sucesso.`);
       setNewUserName('');
       setNewUserPass('');
       fetchUsers();
     }
   };
 
-  const handleDeleteUser = async (id, userToDelete) => {
-    if (userToDelete === 'admin') {
-      alert("Não é possível excluir o administrador padrão.");
+  const handleUpdateUserPassword = async (id, targetUser) => {
+    if (!updatedPasswordValue || updatedPasswordValue.trim().length < 4) {
+      alert("A nova senha deve ter no minimo 4 caracteres.");
       return;
     }
-    if (!window.confirm(`Tem certeza de que deseja remover o acesso de "${userToDelete}"?`)) return;
+
+    const { error } = await supabase
+      .from('app_users')
+      .update({ password: updatedPasswordValue })
+      .eq('id', id);
+
+    if (error) {
+      alert("Erro ao alterar senha: " + error.message);
+    } else {
+      alert(`Senha do usuario "${targetUser}" redefinida com sucesso.`);
+      setEditingPasswordUserId(null);
+      setUpdatedPasswordValue('');
+      fetchUsers();
+    }
+  };
+
+  const handleDeleteUser = async (id, userToDelete) => {
+    if (userToDelete === 'admin') {
+      alert("Nao e permitido excluir o administrador padrao.");
+      return;
+    }
+    if (!window.confirm(`Confirma a remocao do acesso de "${userToDelete}"?`)) return;
 
     await supabase.from('app_users').delete().eq('id', id);
     fetchUsers();
@@ -203,11 +226,11 @@ export default function App() {
   };
 
   const handleClearAllData = async () => {
-    const confirm = window.confirm('ATENÇÃO: Tem a certeza absoluta de que deseja APAGAR TODOS os produtos da base de dados?');
+    const confirm = window.confirm('ATENCAO: Deseja apagar todos os produtos da base de dados?');
     
     if (confirm) {
       setUploading(true);
-      setUploadProgress('A limpar banco de dados...');
+      setUploadProgress('Limpando banco de dados...');
       setProducts([]);
 
       try {
@@ -217,7 +240,7 @@ export default function App() {
           alert("Erro: " + error.message);
           fetchProducts(); 
         } else {
-          alert("Limpeza concluída com sucesso!");
+          alert("Base limpa com sucesso.");
         }
       } catch (err) {
         fetchProducts();
@@ -232,12 +255,12 @@ export default function App() {
     if (products.length === 0) return;
 
     const confirm = window.confirm(
-      `Deseja aplicar a margem de 50% em TODOS os ${products.length} produtos cadastrados?`
+      `Deseja aplicar a margem de 50% em todos os ${products.length} produtos cadastrados?`
     );
     if (!confirm) return;
 
     setUploading(true);
-    setUploadProgress('A aplicar 50% em todos os produtos...');
+    setUploadProgress('Aplicando 50% em todos os produtos...');
 
     setProducts(products.map(p => ({ ...p, margin: 50, is_new: false })));
 
@@ -258,7 +281,7 @@ export default function App() {
         }
       }
 
-      alert(`Margem de 50% aplicada com sucesso a todos os ${products.length} produtos!`);
+      alert(`Margem de 50% aplicada em todos os ${products.length} produtos.`);
     } catch (err) {
       console.error("Erro ao aplicar 50%:", err);
       fetchProducts();
@@ -363,7 +386,7 @@ export default function App() {
     const file = e.target.files[0];
     if (!file) return;
     setUploading(true);
-    setUploadProgress('A ler ficheiro...');
+    setUploadProgress('Lendo arquivo CSV...');
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -462,7 +485,7 @@ export default function App() {
           }
 
           if (parsedProducts.length === 0) {
-            alert("Não foram encontrados dados no relatório.");
+            alert("Nenhum dado compativel encontrado no relatorio.");
             setUploading(false);
             setUploadProgress('');
             return;
@@ -474,7 +497,7 @@ export default function App() {
 
           for (let i = 0; i < parsedProducts.length; i += batchSize) {
             const batch = parsedProducts.slice(i, i + batchSize);
-            setUploadProgress(`A gravar ${i + batch.length} de ${parsedProducts.length}...`);
+            setUploadProgress(`Gravando ${i + batch.length} de ${parsedProducts.length}...`);
             
             const { error } = await supabase.from('products').insert(batch);
             
@@ -497,7 +520,7 @@ export default function App() {
           e.target.value = '';
         },
         error: () => {
-          alert("Erro ao ler CSV.");
+          alert("Erro ao ler arquivo CSV.");
           setUploading(false);
           setUploadProgress('');
         }
@@ -568,7 +591,7 @@ export default function App() {
   };
 
   // ==========================================
-  // RENDERIZAÇÃO: TELA DE LOGIN (ESTILO VIBRA LIMPA)
+  // TELA DE LOGIN
   // ==========================================
   if (!isAuthenticated) {
     return (
@@ -590,7 +613,7 @@ export default function App() {
                 SunMaker
               </h1>
               <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase mt-0.5">
-                Portal de Inteligência
+                Portal de Inteligencia
               </p>
             </div>
 
@@ -604,7 +627,7 @@ export default function App() {
               <div>
                 <input 
                   type="text"
-                  placeholder="Nome de Usuário"
+                  placeholder="Nome de Usuario"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full bg-gray-100 text-gray-800 text-sm px-4 py-3 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
@@ -640,10 +663,13 @@ export default function App() {
               <div className="text-left pt-2">
                 <a 
                   href="#" 
-                  onClick={(e) => { e.preventDefault(); alert("Entre em contato com o administrador do posto para resetar a sua senha."); }}
+                  onClick={(e) => { 
+                    e.preventDefault(); 
+                    alert("Para redefinir sua senha, solicite ao administrador do posto para alterar seus dados no painel de Usuarios."); 
+                  }}
                   className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
                 >
-                  Recuperação de senha
+                  Recuperacao de senha
                 </a>
               </div>
             </form>
@@ -660,7 +686,7 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors">
               <FileText size={14} className="text-gray-400" />
-              <span>Política de privacidade</span>
+              <span>Politica de privacidade</span>
             </div>
           </div>
         </motion.div>
@@ -669,7 +695,7 @@ export default function App() {
   }
 
   // ==========================================
-  // RENDERIZAÇÃO: DASHBOARD PRINCIPAL
+  // DASHBOARD PRINCIPAL
   // ==========================================
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans text-white">
@@ -683,7 +709,7 @@ export default function App() {
             SunMaker
           </motion.h1>
           <div className="flex items-center gap-2 mt-1">
-            <p className="text-gray-400 text-sm">Dashboard de Inteligência</p>
+            <p className="text-gray-400 text-sm">Dashboard de Inteligencia</p>
             <span className="bg-neutral-800 px-2 py-0.5 rounded text-[10px] uppercase text-amber-500 font-bold tracking-wider">
               {calculationMode === 'markup' ? 'Modo: Markup' : 'Modo: Margem Real'}
             </span>
@@ -701,7 +727,7 @@ export default function App() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
             <input 
               type="text" 
-              placeholder="Pesquisar produto ou código..."
+              placeholder="Pesquisar produto ou codigo..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-neutral-900 border border-neutral-700 text-white pl-9 pr-3 py-2 rounded-lg text-sm outline-none focus:border-amber-500 transition-colors"
@@ -724,7 +750,7 @@ export default function App() {
 
           <label className="cursor-pointer bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium">
             <Upload size={16} />
-            <span>{uploading && uploadProgress !== '' ? uploadProgress : "Upload Relatório"}</span>
+            <span>{uploading && uploadProgress !== '' ? uploadProgress : "Upload Relatorio"}</span>
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading} />
           </label>
 
@@ -761,13 +787,13 @@ export default function App() {
             title="Gerenciar e cadastrar logins"
           >
             <Users size={16} />
-            Usuários
+            Usuarios
           </button>
 
           <button 
             onClick={handleLogout}
             className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm"
-            title="Encerrar sessão"
+            title="Encerrar sessao"
           >
             <LogOut size={16} className="text-gray-400" />
             Sair
@@ -775,7 +801,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* MODAL DE GERENCIAMENTO DE USUÁRIOS */}
+      {/* MODAL DE GERENCIAMENTO DE USUARIOS COM REDEFINICAO DE SENHA */}
       <AnimatePresence>
         {showUsersModal && (
           <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
@@ -788,7 +814,7 @@ export default function App() {
               <div className="p-6 border-b border-neutral-800 flex justify-between items-center">
                 <div className="flex items-center gap-2">
                   <Users className="text-amber-500" size={20} />
-                  <h3 className="text-lg font-bold text-white">Controle de Usuários e Logins</h3>
+                  <h3 className="text-lg font-bold text-white">Controle de Usuarios e Logins</h3>
                 </div>
                 <button onClick={() => setShowUsersModal(false)} className="text-gray-400 hover:text-white p-1 rounded-lg">
                   <X size={18} />
@@ -842,28 +868,72 @@ export default function App() {
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
                     Logins Cadastrados ({usersList.length})
                   </p>
-                  <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                  <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
                     {usersList.map(u => (
-                      <div key={u.id} className="flex justify-between items-center bg-neutral-950 p-3 rounded-lg border border-neutral-800">
-                        <div>
-                          <p className="text-sm font-semibold text-white flex items-center gap-2">
-                            {u.username}
-                            <span className="text-[10px] bg-neutral-800 text-gray-400 px-2 py-0.5 rounded capitalize">
-                              {u.role || 'operador'}
-                            </span>
-                          </p>
-                          <p className="text-[11px] text-gray-500">
-                            Cadastrado em: {new Date(u.created_at).toLocaleDateString('pt-BR')}
-                          </p>
+                      <div key={u.id} className="bg-neutral-950 p-3 rounded-lg border border-neutral-800">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="text-sm font-semibold text-white flex items-center gap-2">
+                              {u.username}
+                              <span className="text-[10px] bg-neutral-800 text-gray-400 px-2 py-0.5 rounded capitalize">
+                                {u.role || 'operador'}
+                              </span>
+                            </p>
+                            <p className="text-[11px] text-gray-500">
+                              Cadastrado em: {new Date(u.created_at).toLocaleDateString('pt-BR')}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button 
+                              onClick={() => {
+                                if (editingPasswordUserId === u.id) {
+                                  setEditingPasswordUserId(null);
+                                  setUpdatedPasswordValue('');
+                                } else {
+                                  setEditingPasswordUserId(u.id);
+                                  setUpdatedPasswordValue('');
+                                }
+                              }}
+                              className="p-1.5 text-amber-400 hover:bg-amber-400/10 rounded transition-colors"
+                              title="Redefinir senha deste usuario"
+                            >
+                              <Key size={16} />
+                            </button>
+                            {u.username !== 'admin' && (
+                              <button 
+                                onClick={() => handleDeleteUser(u.id, u.username)}
+                                className="p-1.5 text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                title="Remover acesso deste usuario"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        {u.username !== 'admin' && (
-                          <button 
-                            onClick={() => handleDeleteUser(u.id, u.username)}
-                            className="p-1.5 text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                            title="Remover acesso deste usuário"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+
+                        {/* Linha inline para digitar a nova senha */}
+                        {editingPasswordUserId === u.id && (
+                          <div className="mt-3 pt-3 border-t border-neutral-800 flex items-center gap-2">
+                            <input 
+                              type="password"
+                              placeholder="Nova senha (min. 4 digitos)"
+                              value={updatedPasswordValue}
+                              onChange={(e) => setUpdatedPasswordValue(e.target.value)}
+                              className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2.5 py-1 text-xs text-white outline-none focus:border-amber-500"
+                            />
+                            <button
+                              onClick={() => handleUpdateUserPassword(u.id, u.username)}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded text-xs font-bold transition-all"
+                            >
+                              Confirmar
+                            </button>
+                            <button
+                              onClick={() => { setEditingPasswordUserId(null); setUpdatedPasswordValue(''); }}
+                              className="bg-neutral-800 hover:bg-neutral-700 text-gray-400 px-2.5 py-1 rounded text-xs transition-all"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
                         )}
                       </div>
                     ))}
@@ -882,21 +952,21 @@ export default function App() {
         className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-neutral-900 p-5 rounded-2xl border border-neutral-800"
       >
         <div className="flex items-center gap-4 no-print">
-          <span className="text-gray-300 font-medium text-sm">Estimativa de Período:</span>
+          <span className="text-gray-300 font-medium text-sm">Estimativa de Periodo:</span>
           <select 
             value={period} 
             onChange={(e) => setPeriod(e.target.value)}
             className="bg-black border border-neutral-700 text-white rounded-md px-3 py-1.5 text-sm outline-none focus:border-amber-500 cursor-pointer"
           >
-            <option value="dias">Dias (Giro Diário)</option>
+            <option value="dias">Dias (Giro Diario)</option>
             <option value="semanas">Semanas (Giro Semanal)</option>
             <option value="meses">Meses (Giro Mensal do Lote)</option>
-            <option value="anos">Anos (Projeção Anual)</option>
+            <option value="anos">Anos (Projecao Anual)</option>
           </select>
         </div>
         <div className="text-left md:text-right">
           <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold no-print">
-            Projeção Estimada de Lucro ({period}):
+            Projecao Estimada de Lucro ({period}):
           </p>
           <p className="text-2xl font-black text-emerald-400">
             R$ {getPeriodProfit().toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -982,9 +1052,9 @@ export default function App() {
                 <th className="p-4 text-center">Estoque</th>
                 <th className="p-4">Custo Base</th>
                 <th className="p-4">Margem (%)</th>
-                <th className="p-4">Preço Sugerido</th>
+                <th className="p-4">Preco Sugerido</th>
                 <th className="p-4 text-emerald-400">Lucro do Lote</th>
-                <th className="p-4 no-print text-center">Definir Preço</th>
+                <th className="p-4 no-print text-center">Definir Preco</th>
               </tr>
             </thead>
             <tbody>
@@ -1149,7 +1219,7 @@ export default function App() {
                           </div>
                         ) : (
                           <div className="flex items-center justify-center gap-2">
-                            <div className="flex items-center bg-black border border-neutral-700 rounded px-2 py-1 focus-within:border-amber-500 transition-colors" title="Digite o Preço Sugerido em R$ e aperte Enter">
+                            <div className="flex items-center bg-black border border-neutral-700 rounded px-2 py-1 focus-within:border-amber-500 transition-colors" title="Digite o Preco Sugerido em R$ e aperte Enter">
                               <span className="text-gray-500 text-xs mr-1 font-semibold">R$</span>
                               <input 
                                 type="number" 
