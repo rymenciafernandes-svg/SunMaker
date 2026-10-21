@@ -5,7 +5,8 @@ import {
   Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap, 
   Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
   BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, Lock, Building2,
-  Settings, Sliders, Printer, Camera, User, ToggleLeft, ToggleRight
+  Settings, Sliders, Printer, Camera, User, ToggleLeft, ToggleRight, ExternalLink,
+  ChevronRight
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -15,6 +16,9 @@ const LOGIN_BG_IMAGE = "https://images.unsplash.com/photo-1545459720-aac8509eb02
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+
+  // Modo Suporte (Super Admin visualizando uma empresa sob demanda)
+  const [impersonatedCompany, setImpersonatedCompany] = useState(null);
 
   // Estados de Login
   const [username, setUsername] = useState('');
@@ -70,6 +74,7 @@ export default function App() {
   const [calculationMode, setCalculationMode] = useState('markup');
 
   const isSuperAdmin = currentUser?.username === 'admin' || currentUser?.role === 'superadmin';
+  const effectiveCompanyId = impersonatedCompany ? impersonatedCompany.company_id : currentUser?.company_id;
 
   useEffect(() => {
     const savedUser = localStorage.getItem('sunmaker_user');
@@ -77,7 +82,9 @@ export default function App() {
       const userObj = JSON.parse(savedUser);
       setCurrentUser(userObj);
       setIsAuthenticated(true);
-      fetchProducts(userObj.company_id);
+      if (userObj.company_id && userObj.company_id !== 'sunmaker-master') {
+        fetchProducts(userObj.company_id);
+      }
     }
 
     const savedCompliance = localStorage.getItem('sunmaker_compliance');
@@ -120,7 +127,7 @@ export default function App() {
     setShowPrivacyModal(true);
   };
 
-  // --- AUTENTICAÇÃO COM VALIDAÇÃO DE STATUS DA EMPRESA ---
+  // --- AUTENTICAÇÃO COM SEPARAÇÃO DO SUPER ADMIN ---
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
@@ -136,7 +143,23 @@ export default function App() {
 
     const cleanUser = username.trim().toLowerCase();
 
-    // 1. Busca na base de usuários
+    // 1. Acesso Mestre (Super Admin da Plataforma)
+    if (cleanUser === 'admin' && password === 'copasul') {
+      const superAdminObj = { 
+        username: 'admin', 
+        role: 'superadmin', 
+        company_id: 'sunmaker-master', 
+        avatar_url: null 
+      };
+      localStorage.setItem('sunmaker_user', JSON.stringify(superAdminObj));
+      setCurrentUser(superAdminObj);
+      setImpersonatedCompany(null);
+      setIsAuthenticated(true);
+      setProducts([]); // Inicializa sem carregar dados de terceiros
+      return;
+    }
+
+    // 2. Acesso de Usuários das Empresas Clientes
     const { data: userData } = await supabase
       .from('app_users')
       .select('*')
@@ -147,8 +170,7 @@ export default function App() {
     if (userData) {
       const companyId = userData.company_id || 'empresa-padrao';
 
-      // Validação de status ativo do estabelecimento
-      if (companyId !== 'empresa-padrao' && cleanUser !== 'admin') {
+      if (companyId !== 'sunmaker-master') {
         const { data: comp } = await supabase
           .from('companies')
           .select('*')
@@ -170,18 +192,9 @@ export default function App() {
 
       localStorage.setItem('sunmaker_user', JSON.stringify(userObj));
       setCurrentUser(userObj);
+      setImpersonatedCompany(null);
       setIsAuthenticated(true);
       fetchProducts(companyId);
-      return;
-    }
-
-    // 2. Acesso Administrador Geral Mestre
-    if (cleanUser === 'admin' && password === 'copasul') {
-      const adminObj = { username: 'admin', role: 'superadmin', company_id: 'empresa-padrao', avatar_url: null };
-      localStorage.setItem('sunmaker_user', JSON.stringify(adminObj));
-      setCurrentUser(adminObj);
-      setIsAuthenticated(true);
-      fetchProducts('empresa-padrao');
       return;
     }
 
@@ -192,13 +205,26 @@ export default function App() {
     localStorage.removeItem('sunmaker_user');
     setIsAuthenticated(false);
     setCurrentUser(null);
+    setImpersonatedCompany(null);
     setUsername('');
     setPassword('');
     setProducts([]);
     setShowSettingsModal(false);
   };
 
-  // --- CONSULTAS E AÇÕES B2B (EXCLUSIVO SUPER ADMIN) ---
+  // --- MODO SUPORTE (SUPER ADMIN ENTRA NO AMBIENTE DE UM CLIENTE) ---
+  const handleStartImpersonation = (company) => {
+    setImpersonatedCompany(company);
+    fetchProducts(company.company_id);
+    setShowSettingsModal(false);
+  };
+
+  const handleStopImpersonation = () => {
+    setImpersonatedCompany(null);
+    setProducts([]);
+  };
+
+  // --- CONSULTAS E AÇÕES B2B (SUPER ADMIN) ---
   const fetchCompanies = async () => {
     const { data } = await supabase.from('companies').select('*').order('created_at', { ascending: false });
     if (data) setCompaniesList(data);
@@ -230,7 +256,6 @@ export default function App() {
       return;
     }
 
-    // 1. Cadastra a empresa
     const { error: compError } = await supabase.from('companies').insert([
       {
         company_id: cleanSlug,
@@ -245,7 +270,6 @@ export default function App() {
       return;
     }
 
-    // 2. Cadastra o administrador inicial daquela empresa
     const { error: userError } = await supabase.from('app_users').insert([
       {
         username: cleanAdmin,
@@ -349,8 +373,11 @@ export default function App() {
   };
 
   const fetchProducts = async (companyId) => {
-    const targetCompany = companyId || currentUser?.company_id;
-    if (!targetCompany) return;
+    const targetCompany = companyId || effectiveCompanyId;
+    if (!targetCompany || targetCompany === 'sunmaker-master') {
+      setProducts([]);
+      return;
+    }
 
     try {
       const { data, error } = await supabase
@@ -368,11 +395,12 @@ export default function App() {
   };
 
   const fetchUsers = async () => {
-    if (!currentUser?.company_id) return;
+    const target = effectiveCompanyId;
+    if (!target) return;
     const { data } = await supabase
       .from('app_users')
       .select('*')
-      .eq('company_id', currentUser.company_id)
+      .eq('company_id', target)
       .order('created_at', { ascending: false });
 
     if (data) setUsersList(data);
@@ -381,14 +409,15 @@ export default function App() {
   const handleCreateNewUser = async (e) => {
     e.preventDefault();
     const cleanUser = newUserName.trim().toLowerCase();
-    if (!cleanUser || !newUserPass || !currentUser?.company_id) return;
+    const targetCompany = effectiveCompanyId;
+    if (!cleanUser || !newUserPass || !targetCompany) return;
 
     const { error } = await supabase.from('app_users').insert([
       { 
         username: cleanUser, 
         password: newUserPass, 
         role: newUserRole, 
-        company_id: currentUser.company_id 
+        company_id: targetCompany 
       }
     ]);
 
@@ -403,7 +432,8 @@ export default function App() {
   };
 
   const handleUpdateUserPassword = async (id, targetUser) => {
-    if (!updatedPasswordValue || updatedPasswordValue.trim().length < 4 || !currentUser?.company_id) {
+    const targetCompany = effectiveCompanyId;
+    if (!updatedPasswordValue || updatedPasswordValue.trim().length < 4 || !targetCompany) {
       alert("A nova senha deve ter no mínimo 4 caracteres.");
       return;
     }
@@ -412,7 +442,7 @@ export default function App() {
       .from('app_users')
       .update({ password: updatedPasswordValue })
       .eq('id', id)
-      .eq('company_id', currentUser.company_id);
+      .eq('company_id', targetCompany);
 
     if (error) {
       alert("Erro ao alterar senha: " + error.message);
@@ -429,22 +459,24 @@ export default function App() {
       alert("Não é permitido excluir o administrador padrão.");
       return;
     }
-    if (!currentUser?.company_id) return;
+    const targetCompany = effectiveCompanyId;
+    if (!targetCompany) return;
     if (!window.confirm(`Confirma a remoção do acesso de "${userToDelete}"?`)) return;
 
     await supabase
       .from('app_users')
       .delete()
       .eq('id', id)
-      .eq('company_id', currentUser.company_id);
+      .eq('company_id', targetCompany);
 
     fetchUsers();
   };
 
   const handleSetPrice = async (id, priceValue) => {
+    const targetCompany = effectiveCompanyId;
     const rawPrice = String(priceValue).replace('R$', '').replace(/\s/g, '').replace(',', '.');
     const price = parseFloat(rawPrice);
-    if (isNaN(price) || price <= 0 || !currentUser?.company_id) return;
+    if (isNaN(price) || price <= 0 || !targetCompany) return;
 
     const product = products.find(p => p.id === id);
     if (!product) return;
@@ -467,13 +499,14 @@ export default function App() {
         .from('products')
         .update({ margin, is_new: false })
         .eq('id', id)
-        .eq('company_id', currentUser.company_id);
+        .eq('company_id', targetCompany);
     }
   };
 
   const handleSetMargin = async (id, marginValue) => {
+    const targetCompany = effectiveCompanyId;
     const margin = parseFloat(marginValue);
-    if (isNaN(margin) || !currentUser?.company_id) return;
+    if (isNaN(margin) || !targetCompany) return;
     
     setProducts(products.map(p => p.id === id ? { ...p, margin, is_new: false } : p));
     
@@ -482,24 +515,26 @@ export default function App() {
         .from('products')
         .update({ margin, is_new: false })
         .eq('id', id)
-        .eq('company_id', currentUser.company_id);
+        .eq('company_id', targetCompany);
     }
   };
 
   const handleRemoveMargin = async (id) => {
-    if (!currentUser?.company_id) return;
+    const targetCompany = effectiveCompanyId;
+    if (!targetCompany) return;
     setProducts(products.map(p => p.id === id ? { ...p, margin: null } : p));
     if (typeof id === 'string' && !id.startsWith('local-')) {
       await supabase
         .from('products')
         .update({ margin: null })
         .eq('id', id)
-        .eq('company_id', currentUser.company_id);
+        .eq('company_id', targetCompany);
     }
   };
 
   const handleDeleteProduct = async (id) => {
-    if (!currentUser?.company_id) return;
+    const targetCompany = effectiveCompanyId;
+    if (!targetCompany) return;
     if (!window.confirm('Tem certeza de que deseja excluir este item?')) return;
     
     setProducts(products.filter(p => p.id !== id));
@@ -509,13 +544,14 @@ export default function App() {
         .from('products')
         .delete()
         .eq('id', id)
-        .eq('company_id', currentUser.company_id);
+        .eq('company_id', targetCompany);
     }
   };
 
   const handleClearAllData = async () => {
-    if (!currentUser?.company_id) return;
-    const confirm = window.confirm('ATENÇÃO: Deseja apagar todos os produtos cadastrados da sua empresa?');
+    const targetCompany = effectiveCompanyId;
+    if (!targetCompany || targetCompany === 'sunmaker-master') return;
+    const confirm = window.confirm(`ATENÇÃO: Deseja apagar todos os produtos da empresa "${targetCompany}"?`);
     
     if (confirm) {
       setUploading(true);
@@ -526,16 +562,16 @@ export default function App() {
         const { error } = await supabase
           .from('products')
           .delete()
-          .eq('company_id', currentUser.company_id);
+          .eq('company_id', targetCompany);
 
         if (error) {
           alert("Erro: " + error.message);
-          fetchProducts(currentUser.company_id); 
+          fetchProducts(targetCompany); 
         } else {
-          alert("Base de dados da sua empresa limpa com sucesso.");
+          alert("Base de dados limpa com sucesso.");
         }
       } catch (err) {
-        fetchProducts(currentUser.company_id);
+        fetchProducts(targetCompany);
       }
       
       setUploading(false);
@@ -544,14 +580,15 @@ export default function App() {
   };
 
   const handleApplyCustomMarginAll = async () => {
+    const targetCompany = effectiveCompanyId;
     const margin = parseFloat(globalMarginValue);
-    if (isNaN(margin) || margin <= 0 || products.length === 0 || !currentUser?.company_id) {
+    if (isNaN(margin) || margin <= 0 || products.length === 0 || !targetCompany) {
       alert("Por favor, informe uma porcentagem de margem válida maior que zero.");
       return;
     }
 
     const confirm = window.confirm(
-      `Deseja aplicar a margem de ${margin}% em todos os ${products.length} produtos cadastrados da sua empresa?`
+      `Deseja aplicar a margem de ${margin}% em todos os ${products.length} produtos da empresa "${targetCompany}"?`
     );
     if (!confirm) return;
 
@@ -564,7 +601,7 @@ export default function App() {
       const { error } = await supabase
         .from('products')
         .update({ margin, is_new: false })
-        .eq('company_id', currentUser.company_id);
+        .eq('company_id', targetCompany);
 
       if (error) {
         const idsToUpdate = products
@@ -577,14 +614,14 @@ export default function App() {
             .from('products')
             .update({ margin, is_new: false })
             .in('id', batchIds)
-            .eq('company_id', currentUser.company_id);
+            .eq('company_id', targetCompany);
         }
       }
 
       alert(`Margem de ${margin}% aplicada com sucesso em todos os ${products.length} produtos.`);
     } catch (err) {
       console.error("Erro ao aplicar margem global:", err);
-      fetchProducts(currentUser.company_id);
+      fetchProducts(targetCompany);
     }
 
     setUploading(false);
@@ -661,7 +698,8 @@ export default function App() {
   };
 
   const saveEditing = async (id) => {
-    if (!currentUser?.company_id) return;
+    const targetCompany = effectiveCompanyId;
+    if (!targetCompany) return;
     const updatedCost = parseFloat(editForm.cost) || 0;
     const updatedStock = parseFloat(editForm.stock) || 0;
     const updatedMargin = editForm.margin === '' ? null : parseFloat(editForm.margin);
@@ -690,13 +728,17 @@ export default function App() {
           is_new: false
         })
         .eq('id', id)
-        .eq('company_id', currentUser.company_id);
+        .eq('company_id', targetCompany);
     }
   };
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
-    if (!file || !currentUser?.company_id) return;
+    const targetCompany = effectiveCompanyId;
+    if (!file || !targetCompany || targetCompany === 'sunmaker-master') {
+      alert("Para importar um relatório CSV, conecte-se ao ambiente de uma empresa através de Configurações > Gestão de Empresas.");
+      return;
+    }
     setUploading(true);
     setUploadProgress('Lendo arquivo CSV...');
 
@@ -767,7 +809,7 @@ export default function App() {
                 cost: cost,
                 margin: margin,
                 is_new: true,
-                company_id: currentUser.company_id
+                company_id: targetCompany
               });
             }
           });
@@ -799,7 +841,7 @@ export default function App() {
                   cost, 
                   margin, 
                   is_new: true,
-                  company_id: currentUser.company_id 
+                  company_id: targetCompany 
                 });
               });
             }
@@ -835,7 +877,7 @@ export default function App() {
              alert(`${successCount} produtos importados (${detectedMode === 'markup' ? 'Modo Markup' : 'Modo Margem Real'}).`);
           }
           
-          fetchProducts(currentUser.company_id);
+          fetchProducts(targetCompany);
           setUploading(false);
           setUploadProgress('');
           e.target.value = '';
@@ -863,7 +905,6 @@ export default function App() {
   });
 
   const productsWithoutMargin = filteredProducts.filter(p => p.margin === null || p.margin === undefined || p.margin === 0);
-  const newProducts = filteredProducts.filter(p => p.is_new);
 
   let totalStockUnits = 0;
   let totalCostInvested = 0;
@@ -909,7 +950,7 @@ export default function App() {
   };
 
   // ==========================================
-  // TELA DE LOGIN B2B (SEM CADASTRO PÚBLICO)
+  // TELA DE LOGIN B2B
   // ==========================================
   if (!isAuthenticated) {
     return (
@@ -983,7 +1024,7 @@ export default function App() {
                   href="#" 
                   onClick={(e) => { 
                     e.preventDefault(); 
-                    alert("Para redefinir sua credencial ou contratar acessos adicionais, contate o administrador da plataforma."); 
+                    alert("Para redefinir sua credencial ou contratar novos acessos, contate o administrador da plataforma."); 
                   }}
                   className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
                 >
@@ -1275,6 +1316,29 @@ export default function App() {
   // ==========================================
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans text-white">
+      {/* BARRA DE AVISO DO MODO SUPORTE (SE ATIVO) */}
+      {impersonatedCompany && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          className="mb-6 p-3 bg-amber-500/15 border border-amber-500/40 rounded-xl flex items-center justify-between text-xs text-amber-300 no-print"
+        >
+          <div className="flex items-center gap-2">
+            <Shield size={16} className="text-amber-400" />
+            <span>
+              <strong>[Modo Suporte Ativo]:</strong> Conectado temporariamente ao ambiente da empresa: <strong>{impersonatedCompany.company_name}</strong> ({impersonatedCompany.company_id}).
+            </span>
+          </div>
+
+          <button
+            onClick={handleStopImpersonation}
+            className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-3 py-1 rounded-lg transition-all cursor-pointer"
+          >
+            Encerrar Suporte
+          </button>
+        </motion.div>
+      )}
+
       {/* CABEÇALHO */}
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8 border-b border-gray-800 pb-6 no-print">
         <div>
@@ -1286,7 +1350,7 @@ export default function App() {
             SunMaker
           </motion.h1>
           <p className="text-gray-400 mt-1 text-sm">
-            Dashboard de Inteligência
+            {isSuperAdmin && !impersonatedCompany ? "Painel Master - Gestão de Plataforma" : "Dashboard de Inteligência"}
           </p>
         </div>
         
@@ -1358,6 +1422,368 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {/* TELA INFORMATIVA DO SUPER ADMIN QUANDO NÃO HÁ EMPRESA EM MODO SUPORTE */}
+      {isSuperAdmin && !impersonatedCompany ? (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 mb-8 text-center space-y-4 shadow-xl">
+          <div className="w-14 h-14 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-center mx-auto text-amber-500">
+            <Shield size={28} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white">Sessão Geral de Super Administrador</h2>
+            <p className="text-gray-400 text-xs max-w-md mx-auto mt-1 leading-relaxed">
+              Você está conectado como gestor global da plataforma. Os produtos e relatórios de clientes não são exibidos por padrão para garantir a privacidade dos dados.
+            </p>
+          </div>
+          <div className="pt-2">
+            <button
+              onClick={() => { 
+                setActiveSettingsTab('empresas'); 
+                fetchCompanies(); 
+                setShowSettingsModal(true); 
+              }}
+              className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-5 py-2.5 rounded-lg text-xs transition-all cursor-pointer inline-flex items-center gap-2"
+            >
+              <Building2 size={15} />
+              Gerenciar Empresas e Acessar Ambientes de Clientes
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* ESTIMATIVA DE PERÍODO (CALCULADA PELA CATEGORIA ATIVA) */}
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            transition={{ delay: 0.1 }}
+            className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-neutral-900 p-5 rounded-2xl border border-neutral-800"
+          >
+            <div className="flex items-center gap-4 no-print">
+              <span className="text-gray-300 font-medium text-sm">Estimativa de Período:</span>
+              <select 
+                value={period} 
+                onChange={(e) => setPeriod(e.target.value)}
+                className="bg-black border border-neutral-700 text-white rounded-md px-3 py-1.5 text-sm outline-none focus:border-amber-500 cursor-pointer"
+              >
+                <option value="dias">Dias (Giro Diário)</option>
+                <option value="semanas">Semanas (Giro Semanal)</option>
+                <option value="meses">Meses (Giro Mensal do Lote)</option>
+                <option value="anos">Anos (Projeção Anual)</option>
+              </select>
+            </div>
+            <div className="text-left md:text-right">
+              <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold no-print">
+                Projeção Estimada de Lucro ({period}) {selectedCategory !== 'todas' ? `- ${selectedCategory}` : ''}:
+              </p>
+              <p className="text-2xl font-black text-emerald-400">
+                R$ {getPeriodProfit().toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+              <span className="text-[11px] text-gray-500">Calculado sobre a rotatividade dos itens exibidos</span>
+            </div>
+          </motion.div>
+
+          {/* CARDS DE RESUMO FINANCEIRO (VINCULADOS AO FILTRO ATIVO) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8 no-print">
+            <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 shadow-xl">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-gray-400 font-medium text-xs uppercase tracking-wider">Produtos / Itens</h3>
+                <Package className="text-amber-500" size={20} />
+              </div>
+              <p className="text-3xl font-bold">{filteredProducts.length}</p>
+              <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                <Boxes size={14} className="text-neutral-500" />
+                <span className="text-amber-400 font-semibold">{totalStockUnits.toLocaleString('pt-BR')}</span> unidades {selectedCategory !== 'todas' ? 'na categoria' : 'em loja'}
+              </p>
+            </motion.div>
+            
+            <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 shadow-xl">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-gray-400 font-medium text-xs uppercase tracking-wider">Capital Investido</h3>
+                <DollarSign className="text-blue-400" size={20} />
+              </div>
+              <p className="text-2xl font-bold text-gray-100">
+                R$ {totalCostInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Custo dos itens exibidos</p>
+            </motion.div>
+
+            <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-emerald-950/70 shadow-xl">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-emerald-400 font-medium text-xs uppercase tracking-wider">Lucro em Estoque</h3>
+                <TrendingUp className="text-emerald-400" size={20} />
+              </div>
+              <p className="text-2xl font-bold text-emerald-400">
+                R$ {totalStockProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Venda estimada: <strong className="text-gray-300">R$ {totalSalesValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              </p>
+            </motion.div>
+
+            <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-red-950/70 shadow-xl">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-red-400 font-medium text-xs uppercase tracking-wider">Revisar Margem</h3>
+                <AlertCircle className="text-red-500" size={20} />
+              </div>
+              <p className="text-3xl font-bold text-red-500">{productsWithoutMargin.length}</p>
+              <p className="text-xs text-gray-500 mt-1">Itens sem margem no filtro ativo</p>
+            </motion.div>
+          </div>
+
+          {/* LISTAGEM DE PRODUTOS */}
+          <motion.div 
+            initial={{ y: 20, opacity: 0 }} 
+            animate={{ y: 0, opacity: 1 }} 
+            transition={{ delay: 0.2 }}
+            className="bg-neutral-900 rounded-2xl border border-neutral-800 overflow-hidden shadow-2xl"
+          >
+            <div className="p-6 border-b border-neutral-800 flex justify-between items-center no-print">
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-bold">Listagem de Margens e Estoque</h2>
+                {selectedCategory !== 'todas' && (
+                  <span className="text-xs bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-md border border-amber-500/30">
+                    Categoria: {selectedCategory}
+                  </span>
+                )}
+              </div>
+              {(searchTerm || selectedCategory !== 'todas') && (
+                <span className="text-xs text-gray-400 bg-neutral-800 px-3 py-1 rounded-full border border-neutral-700">
+                  Exibindo: {filteredProducts.length} de {products.length}
+                </span>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left print-table">
+                <thead className="bg-black/60 border-b border-neutral-800 text-gray-400 text-xs uppercase tracking-wider">
+                  <tr>
+                    <th className="p-4">Produto</th>
+                    <th className="p-4">Categoria</th>
+                    <th className="p-4 text-center">Estoque</th>
+                    <th className="p-4">Custo Base</th>
+                    <th className="p-4">Margem (%)</th>
+                    <th className="p-4">Preço Sugerido</th>
+                    <th className="p-4 text-emerald-400">Lucro do Lote</th>
+                    <th className="p-4 no-print text-center">Definir Preço</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredProducts.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-gray-500 italic">
+                        Nenhum produto cadastrado para esta empresa.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredProducts.map(product => {
+                      const isEditing = editingId === product.id;
+                      const stockQty = Number(product.stock) || 0;
+                      const cost = Number(product.cost) || 0;
+                      const marginVal = product.margin !== null ? Number(product.margin) : 0;
+                      
+                      let suggestedPrice = 0;
+                      let unitProfit = 0;
+
+                      if (marginVal > 0) {
+                        if (calculationMode === 'markup') {
+                          suggestedPrice = cost + (cost * (marginVal / 100));
+                        } else {
+                          if (marginVal < 100) {
+                            suggestedPrice = cost / (1 - (marginVal / 100));
+                          } else {
+                            suggestedPrice = cost + (cost * (marginVal / 100));
+                          }
+                        }
+                        unitProfit = suggestedPrice - cost;
+                      }
+                      
+                      const lotProfit = unitProfit * stockQty;
+
+                      return (
+                        <tr key={product.id} className={`border-b border-neutral-800/60 hover:bg-white/5 transition-colors ${isEditing ? 'bg-white/5' : ''}`}>
+                          <td className="p-4 font-medium">
+                            {isEditing ? (
+                              <input 
+                                type="text" 
+                                value={editForm.name} 
+                                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                                className="w-full bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
+                              />
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <span>{product.name}</span>
+                                {product.is_new && (
+                                  <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full border border-emerald-500/30 uppercase font-bold tracking-wider">
+                                    Novo
+                                  </span>
+                                )}
+                                {(!product.margin || product.margin === 0) && (
+                                  <span className="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full border border-red-500/30 uppercase font-bold tracking-wider">
+                                    Alerta
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="p-4">
+                            {isEditing ? (
+                              <input 
+                                type="text" 
+                                value={editForm.category} 
+                                onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                                className="w-28 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
+                              />
+                            ) : (
+                              <span className="text-xs bg-neutral-800 text-neutral-300 px-2 py-1 rounded border border-neutral-700">
+                                {product.category || 'Geral'}
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="p-4 text-center">
+                            {isEditing ? (
+                              <input 
+                                type="number" 
+                                step="1"
+                                value={editForm.stock} 
+                                onChange={(e) => setEditForm({ ...editForm, stock: e.target.value })}
+                                className="w-20 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm text-center outline-none"
+                              />
+                            ) : (
+                              <span className="font-mono text-sm text-gray-200">
+                                {stockQty.toLocaleString('pt-BR')} un
+                              </span>
+                            )}
+                          </td>
+                          
+                          <td className="p-4 text-gray-300 font-mono text-sm">
+                            {isEditing ? (
+                              <input 
+                                type="number" 
+                                step="0.001"
+                                value={editForm.cost} 
+                                onChange={(e) => setEditForm({ ...editForm, cost: e.target.value })}
+                                className="w-24 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
+                              />
+                            ) : (
+                              `R$ ${cost.toFixed(2)}`
+                            )}
+                          </td>
+                          
+                          <td className="p-4">
+                            {isEditing ? (
+                              <input 
+                                type="number" 
+                                step="0.001"
+                                value={editForm.margin} 
+                                onChange={(e) => handleEditMarginChange(e.target.value)}
+                                placeholder="%"
+                                className="w-20 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
+                              />
+                            ) : (
+                              marginVal > 0 ? (
+                                <span className="text-amber-400 font-bold">{marginVal}%</span>
+                              ) : (
+                                <span className="text-gray-500 italic">0%</span>
+                              )
+                            )}
+                          </td>
+                          
+                          <td className="p-4 font-mono text-sm">
+                            {isEditing ? (
+                              <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2.5 py-1">
+                                <span className="text-gray-400 text-xs mr-1">R$</span>
+                                <input 
+                              type="number" 
+                              step="0.01"
+                              value={editForm.price} 
+                              onChange={(e) => handleEditPriceChange(e.target.value)}
+                              placeholder="0.00"
+                              className="w-20 bg-transparent text-sm text-emerald-400 font-semibold outline-none"
+                            />
+                          </div>
+                        ) : (
+                          marginVal > 0
+                            ? <span className="text-gray-200">R$ {suggestedPrice.toFixed(2)}</span>
+                            : <span className="text-gray-600">-</span>
+                        )}
+                      </td>
+
+                      <td className="p-4 font-mono text-sm font-semibold">
+                        {!isEditing && marginVal > 0
+                          ? <span className="text-emerald-400">R$ {lotProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          : <span className="text-gray-600">-</span>
+                        }
+                      </td>
+                      
+                      <td className="p-4 no-print">
+                        {isEditing ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <button onClick={() => saveEditing(product.id)} className="p-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded cursor-pointer" title="Confirmar">
+                              <Check size={18} />
+                            </button>
+                            <button onClick={cancelEditing} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded cursor-pointer" title="Cancelar">
+                              <X size={18} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="flex items-center bg-black border border-neutral-700 rounded px-2 py-1 focus-within:border-amber-500 transition-colors" title="Digite o Preço Sugerido em R$ e aperte Enter">
+                              <span className="text-gray-500 text-xs mr-1 font-semibold">R$</span>
+                              <input 
+                                type="number" 
+                                step="0.01"
+                                placeholder="0,00" 
+                                className="w-16 bg-transparent text-sm outline-none text-white placeholder:text-gray-600 font-mono"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleSetPrice(product.id, e.target.value);
+                                    e.target.value = '';
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  if (e.target.value) {
+                                    handleSetPrice(product.id, e.target.value);
+                                    e.target.value = '';
+                                  }
+                                }}
+                              />
+                            </div>
+
+                            <button 
+                              onClick={() => startEditing(product)} 
+                              className="p-1.5 text-gray-400 hover:text-amber-400 hover:bg-amber-400/10 rounded transition-colors cursor-pointer" 
+                              title="Editar Dados"
+                            >
+                              <Edit3 size={16} />
+                            </button>
+                            <button 
+                              onClick={() => handleRemoveMargin(product.id)} 
+                              className="p-1.5 text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded transition-colors cursor-pointer" 
+                              title="Zerar Margem"
+                            >
+                              <AlertCircle size={16} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteProduct(product.id)} 
+                              className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors cursor-pointer" 
+                              title="Excluir Produto"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </motion.div>
+      </>
+      )}
 
       {/* MODAL CENTRAL DE CONFIGURAÇÕES */}
       <AnimatePresence>
@@ -1448,7 +1874,7 @@ export default function App() {
                       <form onSubmit={handleCreateNewUser} className="bg-black/40 border border-neutral-800 p-4 rounded-xl space-y-3">
                         <p className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
                           <UserPlus size={14} className="text-emerald-400" />
-                          Cadastrar Novo Acesso
+                          Cadastrar Novo Acesso para: <strong className="text-white">{effectiveCompanyId}</strong>
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <input 
@@ -1564,7 +1990,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* ABA: GESTÃO DE EMPRESAS B2B (SUPER ADMIN) */}
+                  {/* ABA: GESTÃO DE EMPRESAS B2B COM ACESSO DIRETO A SUPORTE */}
                   {activeSettingsTab === 'empresas' && isSuperAdmin && (
                     <div className="space-y-6">
                       <form onSubmit={handleCreateCompanyB2B} className="bg-black/40 border border-neutral-800 p-4 rounded-xl space-y-3">
@@ -1648,6 +2074,15 @@ export default function App() {
 
                               <div className="flex items-center gap-2">
                                 <button
+                                  onClick={() => handleStartImpersonation(comp)}
+                                  className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                                  title="Acessar ambiente desta loja como suporte"
+                                >
+                                  <ExternalLink size={14} />
+                                  Acessar Ambiente
+                                </button>
+
+                                <button
                                   onClick={() => handleToggleCompanyStatus(comp.id, comp.status, comp.company_name)}
                                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${comp.status === 'ativo' ? 'bg-red-950/60 hover:bg-red-900 text-red-400' : 'bg-emerald-950/60 hover:bg-emerald-900 text-emerald-400'}`}
                                 >
@@ -1704,7 +2139,7 @@ export default function App() {
                           <h4>Aplicação de Margem Global em Massa</h4>
                         </div>
                         <p className="text-gray-300 text-xs leading-relaxed">
-                          Defina uma margem padrão para atualizar simultaneamente todos os produtos da sua empresa no banco de dados.
+                          Defina uma margem padrão para atualizar simultaneamente todos os produtos da empresa selecionada ({effectiveCompanyId}) no banco de dados.
                         </p>
                         
                         <div className="flex items-center gap-3 pt-1">
@@ -1752,7 +2187,7 @@ export default function App() {
                           <h4>Limpeza de Dados da Empresa</h4>
                         </div>
                         <p className="text-gray-400 text-xs leading-relaxed">
-                          Esta ação excluirá permanentemente todos os produtos cadastrados da sua empresa, mantendo intactos os usuários e os dados de outros estabelecimentos.
+                          Esta ação excluirá permanentemente todos os produtos cadastrados da empresa ativa ({effectiveCompanyId}), mantendo intactos os usuários e os dados de outros estabelecimentos.
                         </p>
                         <button
                           onClick={handleClearAllData}
@@ -1835,26 +2270,45 @@ export default function App() {
                           </div>
                           <div className="flex justify-between py-1 border-b border-neutral-900">
                             <span className="text-gray-500">Perfil de Acesso:</span>
-                            <span className="font-semibold text-amber-400 capitalize">{currentUser?.role}</span>
+                            <span className="font-semibold text-amber-400 capitalize">
+                              {isSuperAdmin ? "Super Administrador (Plataforma Global)" : currentUser?.role}
+                            </span>
                           </div>
                           <div className="flex justify-between py-1 border-b border-neutral-900">
-                            <span className="text-gray-500">Identificador da Empresa:</span>
+                            <span className="text-gray-500">Identificador da Conta:</span>
                             <span className="font-mono text-blue-400 font-semibold">{currentUser?.company_id}</span>
                           </div>
+
+                          {impersonatedCompany && (
+                            <div className="flex justify-between py-1 border-b border-neutral-900 bg-amber-500/10 px-2 rounded">
+                              <span className="text-amber-400">Ambiente em Suporte:</span>
+                              <span className="font-bold text-amber-300">{impersonatedCompany.company_name} ({impersonatedCompany.company_id})</span>
+                            </div>
+                          )}
+
                           <div className="flex justify-between py-1">
                             <span className="text-gray-500">Status da Sessão:</span>
                             <span className="text-emerald-400 font-semibold">Ativa e Autenticada</span>
                           </div>
                         </div>
 
-                        <div className="pt-2">
+                        <div className="pt-2 flex items-center gap-2">
                           <button
                             onClick={handleLogout}
                             className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 font-medium px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition-all cursor-pointer"
                           >
                             <LogOut size={14} className="text-gray-400" />
-                            Encerrar Sessão Desta Conta
+                            Encerrar Sessão
                           </button>
+
+                          {impersonatedCompany && (
+                            <button
+                              onClick={() => { handleStopImpersonation(); setShowSettingsModal(false); }}
+                              className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 font-bold px-4 py-2 rounded-lg text-xs transition-all cursor-pointer"
+                            >
+                              Sair do Ambiente de Suporte
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1874,338 +2328,6 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
-
-      {/* ESTIMATIVA DE PERÍODO (CALCULADA PELA CATEGORIA ATIVA) */}
-      <motion.div 
-        initial={{ opacity: 0 }} 
-        animate={{ opacity: 1 }} 
-        transition={{ delay: 0.1 }}
-        className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-neutral-900 p-5 rounded-2xl border border-neutral-800"
-      >
-        <div className="flex items-center gap-4 no-print">
-          <span className="text-gray-300 font-medium text-sm">Estimativa de Período:</span>
-          <select 
-            value={period} 
-            onChange={(e) => setPeriod(e.target.value)}
-            className="bg-black border border-neutral-700 text-white rounded-md px-3 py-1.5 text-sm outline-none focus:border-amber-500 cursor-pointer"
-          >
-            <option value="dias">Dias (Giro Diário)</option>
-            <option value="semanas">Semanas (Giro Semanal)</option>
-            <option value="meses">Meses (Giro Mensal do Lote)</option>
-            <option value="anos">Anos (Projeção Anual)</option>
-          </select>
-        </div>
-        <div className="text-left md:text-right">
-          <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold no-print">
-            Projeção Estimada de Lucro ({period}) {selectedCategory !== 'todas' ? `- ${selectedCategory}` : ''}:
-          </p>
-          <p className="text-2xl font-black text-emerald-400">
-            R$ {getPeriodProfit().toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
-          <span className="text-[11px] text-gray-500">Calculado sobre a rotatividade dos itens exibidos</span>
-        </div>
-      </motion.div>
-
-      {/* CARDS DE RESUMO FINANCEIRO (VINCULADOS AO FILTRO ATIVO) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8 no-print">
-        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 shadow-xl">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-gray-400 font-medium text-xs uppercase tracking-wider">Produtos / Itens</h3>
-            <Package className="text-amber-500" size={20} />
-          </div>
-          <p className="text-3xl font-bold">{filteredProducts.length}</p>
-          <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-            <Boxes size={14} className="text-neutral-500" />
-            <span className="text-amber-400 font-semibold">{totalStockUnits.toLocaleString('pt-BR')}</span> unidades {selectedCategory !== 'todas' ? 'na categoria' : 'em loja'}
-          </p>
-        </motion.div>
-        
-        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-neutral-800 shadow-xl">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-gray-400 font-medium text-xs uppercase tracking-wider">Capital Investido</h3>
-            <DollarSign className="text-blue-400" size={20} />
-          </div>
-          <p className="text-2xl font-bold text-gray-100">
-            R$ {totalCostInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">Custo dos itens exibidos</p>
-        </motion.div>
-
-        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-emerald-950/70 shadow-xl">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-emerald-400 font-medium text-xs uppercase tracking-wider">Lucro em Estoque</h3>
-            <TrendingUp className="text-emerald-400" size={20} />
-          </div>
-          <p className="text-2xl font-bold text-emerald-400">
-            R$ {totalStockProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">
-            Venda estimada: <strong className="text-gray-300">R$ {totalSalesValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-          </p>
-        </motion.div>
-
-        <motion.div whileHover={{ scale: 1.02 }} className="bg-neutral-900 p-5 rounded-2xl border border-red-950/70 shadow-xl">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-red-400 font-medium text-xs uppercase tracking-wider">Revisar Margem</h3>
-            <AlertCircle className="text-red-500" size={20} />
-          </div>
-          <p className="text-3xl font-bold text-red-500">{productsWithoutMargin.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Itens sem margem no filtro ativo</p>
-        </motion.div>
-      </div>
-
-      {/* LISTAGEM DE PRODUTOS */}
-      <motion.div 
-        initial={{ y: 20, opacity: 0 }} 
-        animate={{ y: 0, opacity: 1 }} 
-        transition={{ delay: 0.2 }}
-        className="bg-neutral-900 rounded-2xl border border-neutral-800 overflow-hidden shadow-2xl"
-      >
-        <div className="p-6 border-b border-neutral-800 flex justify-between items-center no-print">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold">Listagem de Margens e Estoque</h2>
-            {selectedCategory !== 'todas' && (
-              <span className="text-xs bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-md border border-amber-500/30">
-                Categoria: {selectedCategory}
-              </span>
-            )}
-          </div>
-          {(searchTerm || selectedCategory !== 'todas') && (
-            <span className="text-xs text-gray-400 bg-neutral-800 px-3 py-1 rounded-full border border-neutral-700">
-              Exibindo: {filteredProducts.length} de {products.length}
-            </span>
-          )}
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left print-table">
-            <thead className="bg-black/60 border-b border-neutral-800 text-gray-400 text-xs uppercase tracking-wider">
-              <tr>
-                <th className="p-4">Produto</th>
-                <th className="p-4">Categoria</th>
-                <th className="p-4 text-center">Estoque</th>
-                <th className="p-4">Custo Base</th>
-                <th className="p-4">Margem (%)</th>
-                <th className="p-4">Preço Sugerido</th>
-                <th className="p-4 text-emerald-400">Lucro do Lote</th>
-                <th className="p-4 no-print text-center">Definir Preço</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-8 text-center text-gray-500 italic">
-                    Nenhum produto cadastrado para a sua empresa nesta categoria.
-                  </td>
-                </tr>
-              ) : (
-                filteredProducts.map(product => {
-                  const isEditing = editingId === product.id;
-                  const stockQty = Number(product.stock) || 0;
-                  const cost = Number(product.cost) || 0;
-                  const marginVal = product.margin !== null ? Number(product.margin) : 0;
-                  
-                  let suggestedPrice = 0;
-                  let unitProfit = 0;
-
-                  if (marginVal > 0) {
-                    if (calculationMode === 'markup') {
-                      suggestedPrice = cost + (cost * (marginVal / 100));
-                    } else {
-                      if (marginVal < 100) {
-                        suggestedPrice = cost / (1 - (marginVal / 100));
-                      } else {
-                        suggestedPrice = cost + (cost * (marginVal / 100));
-                      }
-                    }
-                    unitProfit = suggestedPrice - cost;
-                  }
-                  
-                  const lotProfit = unitProfit * stockQty;
-
-                  return (
-                    <tr key={product.id} className={`border-b border-neutral-800/60 hover:bg-white/5 transition-colors ${isEditing ? 'bg-white/5' : ''}`}>
-                      <td className="p-4 font-medium">
-                        {isEditing ? (
-                          <input 
-                            type="text" 
-                            value={editForm.name} 
-                            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                            className="w-full bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
-                          />
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <span>{product.name}</span>
-                            {product.is_new && (
-                              <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full border border-emerald-500/30 uppercase font-bold tracking-wider">
-                                Novo
-                              </span>
-                            )}
-                            {(!product.margin || product.margin === 0) && (
-                              <span className="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full border border-red-500/30 uppercase font-bold tracking-wider">
-                                Alerta
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="p-4">
-                        {isEditing ? (
-                          <input 
-                            type="text" 
-                            value={editForm.category} 
-                            onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                            className="w-28 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
-                          />
-                        ) : (
-                          <span className="text-xs bg-neutral-800 text-neutral-300 px-2 py-1 rounded border border-neutral-700">
-                            {product.category || 'Geral'}
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="p-4 text-center">
-                        {isEditing ? (
-                          <input 
-                            type="number" 
-                            step="1"
-                            value={editForm.stock} 
-                            onChange={(e) => setEditForm({ ...editForm, stock: e.target.value })}
-                            className="w-20 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm text-center outline-none"
-                          />
-                        ) : (
-                          <span className="font-mono text-sm text-gray-200">
-                            {stockQty.toLocaleString('pt-BR')} un
-                          </span>
-                        )}
-                      </td>
-                      
-                      <td className="p-4 text-gray-300 font-mono text-sm">
-                        {isEditing ? (
-                          <input 
-                            type="number" 
-                            step="0.001"
-                            value={editForm.cost} 
-                            onChange={(e) => setEditForm({ ...editForm, cost: e.target.value })}
-                            className="w-24 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
-                          />
-                        ) : (
-                          `R$ ${cost.toFixed(2)}`
-                        )}
-                      </td>
-                      
-                      <td className="p-4">
-                        {isEditing ? (
-                          <input 
-                            type="number" 
-                            step="0.001"
-                            value={editForm.margin} 
-                            onChange={(e) => handleEditMarginChange(e.target.value)}
-                            placeholder="%"
-                            className="w-20 bg-black border border-amber-500/70 rounded px-2.5 py-1 text-sm outline-none"
-                          />
-                        ) : (
-                          marginVal > 0 ? (
-                            <span className="text-amber-400 font-bold">{marginVal}%</span>
-                          ) : (
-                            <span className="text-gray-500 italic">0%</span>
-                          )
-                        )}
-                      </td>
-                      
-                      <td className="p-4 font-mono text-sm">
-                        {isEditing ? (
-                          <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2.5 py-1">
-                            <span className="text-gray-400 text-xs mr-1">R$</span>
-                            <input 
-                              type="number" 
-                              step="0.01"
-                              value={editForm.price} 
-                              onChange={(e) => handleEditPriceChange(e.target.value)}
-                              placeholder="0.00"
-                              className="w-20 bg-transparent text-sm text-emerald-400 font-semibold outline-none"
-                            />
-                          </div>
-                        ) : (
-                          marginVal > 0
-                            ? <span className="text-gray-200">R$ {suggestedPrice.toFixed(2)}</span>
-                            : <span className="text-gray-600">-</span>
-                        )}
-                      </td>
-
-                      <td className="p-4 font-mono text-sm font-semibold">
-                        {!isEditing && marginVal > 0
-                          ? <span className="text-emerald-400">R$ {lotProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                          : <span className="text-gray-600">-</span>
-                        }
-                      </td>
-                      
-                      <td className="p-4 no-print">
-                        {isEditing ? (
-                          <div className="flex items-center justify-center gap-2">
-                            <button onClick={() => saveEditing(product.id)} className="p-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded cursor-pointer" title="Confirmar">
-                              <Check size={18} />
-                            </button>
-                            <button onClick={cancelEditing} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded cursor-pointer" title="Cancelar">
-                              <X size={18} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center gap-2">
-                            <div className="flex items-center bg-black border border-neutral-700 rounded px-2 py-1 focus-within:border-amber-500 transition-colors" title="Digite o Preço Sugerido em R$ e aperte Enter">
-                              <span className="text-gray-500 text-xs mr-1 font-semibold">R$</span>
-                              <input 
-                                type="number" 
-                                step="0.01"
-                                placeholder="0,00" 
-                                className="w-16 bg-transparent text-sm outline-none text-white placeholder:text-gray-600 font-mono"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    handleSetPrice(product.id, e.target.value);
-                                    e.target.value = '';
-                                  }
-                                }}
-                                onBlur={(e) => {
-                                  if (e.target.value) {
-                                    handleSetPrice(product.id, e.target.value);
-                                    e.target.value = '';
-                                  }
-                                }}
-                              />
-                            </div>
-
-                            <button 
-                              onClick={() => startEditing(product)} 
-                              className="p-1.5 text-gray-400 hover:text-amber-400 hover:bg-amber-400/10 rounded transition-colors cursor-pointer" 
-                              title="Editar Dados"
-                            >
-                              <Edit3 size={16} />
-                            </button>
-                            <button 
-                              onClick={() => handleRemoveMargin(product.id)} 
-                              className="p-1.5 text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded transition-colors cursor-pointer" 
-                              title="Zerar Margem"
-                            >
-                              <AlertCircle size={16} />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteProduct(product.id)} 
-                              className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors cursor-pointer" 
-                              title="Excluir Produto"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </motion.div>
     </div>
   );
 }
