@@ -4,7 +4,7 @@ import {
   Upload, Download, Trash2, TrendingUp, AlertCircle, Package, 
   Edit3, X, Check, Search, Filter, DollarSign, Boxes, Zap, 
   Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
-  BookOpen, Calculator, FileSpreadsheet, PhoneCall
+  BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, CheckCircle2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -23,6 +23,7 @@ export default function App() {
 
   // Modais Institucionais e Suporte
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   // Modal de Gerenciamento de Usuarios
   const [showUsersModal, setShowUsersModal] = useState(false);
@@ -687,7 +688,7 @@ export default function App() {
               <span>Central de ajuda</span>
             </div>
             <div 
-              onClick={() => alert("Modulo de Termos de Uso em desenvolvimento.")}
+              onClick={() => setShowTermsModal(true)}
               className="flex items-center gap-2 cursor-pointer hover:text-gray-900 transition-colors"
             >
               <Info size={14} className="text-gray-400" />
@@ -703,7 +704,7 @@ export default function App() {
           </div>
         </motion.div>
 
-        {/* MODAL CENTRAL DE AJUDA NA TELA DE LOGIN */}
+        {/* MODAL CENTRAL DE AJUDA */}
         <AnimatePresence>
           {showHelpModal && (
             <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
@@ -727,7 +728,6 @@ export default function App() {
                 </div>
 
                 <div className="p-6 max-h-[75vh] overflow-y-auto space-y-5 text-sm">
-                  {/* Secao 1 */}
                   <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
                     <div className="flex items-center gap-2 text-amber-400 font-semibold mb-1.5">
                       <FileSpreadsheet size={16} />
@@ -740,7 +740,6 @@ export default function App() {
                     </p>
                   </div>
 
-                  {/* Secao 2 */}
                   <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
                     <div className="flex items-center gap-2 text-emerald-400 font-semibold mb-1.5">
                       <Calculator size={16} />
@@ -751,7 +750,6 @@ export default function App() {
                     </p>
                   </div>
 
-                  {/* Secao 3 */}
                   <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
                     <div className="flex items-center gap-2 text-blue-400 font-semibold mb-1.5">
                       <Shield size={16} />
@@ -762,7 +760,6 @@ export default function App() {
                     </p>
                   </div>
 
-                  {/* Secao 4 */}
                   <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
                     <div className="flex items-center gap-2 text-red-400 font-semibold mb-1.5">
                       <PhoneCall size={16} />
@@ -780,6 +777,83 @@ export default function App() {
                     className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all"
                   >
                     Fechar
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* MODAL TERMOS DE USO */}
+        <AnimatePresence>
+          {showTermsModal && (
+            <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl text-white"
+              >
+                <div className="p-6 border-b border-neutral-800 flex justify-between items-center bg-black/40">
+                  <div className="flex items-center gap-2">
+                    <Scale className="text-amber-500" size={22} />
+                    <h3 className="text-lg font-bold text-white">Termos de Uso - Plataforma SunMaker</h3>
+                  </div>
+                  <button 
+                    onClick={() => setShowTermsModal(false)} 
+                    className="text-gray-400 hover:text-white p-1 rounded-lg"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="p-6 max-h-[75vh] overflow-y-auto space-y-4 text-xs leading-relaxed text-gray-300">
+                  <div className="border-l-2 border-amber-500 pl-3">
+                    <h4 className="text-sm font-bold text-white mb-1">1. Objeto e Finalidade</h4>
+                    <p>
+                      A plataforma SunMaker e uma ferramenta de uso estritamente corporativo e confidencial, desenvolvida para gestao de precos, sincronizacao de relatorios e acompanhamento de margens da loja de conveniencia e do posto de combustiveis. O acesso e restrito a colaboradores autorizados pela administracao.
+                    </p>
+                  </div>
+
+                  <div className="border-l-2 border-amber-500 pl-3">
+                    <h4 className="text-sm font-bold text-white mb-1">2. Confidencialidade Comercial</h4>
+                    <p>
+                      Todos os dados exibidos na plataforma, incluindo custos de aquisicao de mercadorias, margens de lucro, valores de estoque e precificacoes sugeridas, configuram segredo de negocio. E terminantemente proibida a exportacao, compartilhamento ou divulgacao dessas informacoes para terceiros sem autorizacao previa formal.
+                    </p>
+                  </div>
+
+                  <div className="border-l-2 border-amber-500 pl-3">
+                    <h4 className="text-sm font-bold text-white mb-1">3. Responsabilidade pelas Credenciais</h4>
+                    <p>
+                      Cada operador e individualmente responsavel pela guarda e sigilo de seu login e senha. Qualquer alteracao realizada no banco de dados (modificacao de precos, aplicacao de margens globais ou exclusao de registros) sera vinculada e atribuida a conta autenticada no momento da operacao.
+                    </p>
+                  </div>
+
+                  <div className="border-l-2 border-amber-500 pl-3">
+                    <h4 className="text-sm font-bold text-white mb-1">4. Integridade das Operacoes</h4>
+                    <p>
+                      O usuario compromete-se a validar os relatorios CSV originados do sistema Xpert antes da confirmacao do upload e a atentar-se aos precos cadastrados em lote, estando ciente de que valores digitados incorretamente impactam diretamente as projecoes financeiras e a integridade do negocio.
+                    </p>
+                  </div>
+
+                  <div className="border-l-2 border-amber-500 pl-3">
+                    <h4 className="text-sm font-bold text-white mb-1">5. Auditoria e Encerramento de Acesso</h4>
+                    <p>
+                      A administracao do posto reserva-se o direito de auditar os acessos, redefinir senhas, alterar perfis de permissao (Operador / Administrador) e revogar sumariamente contas de usuarios desligados ou que violem as normas de seguranca estabelecidas nestes termos.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-neutral-950 border-t border-neutral-800 flex justify-between items-center">
+                  <span className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                    <CheckCircle2 size={13} className="text-emerald-500" />
+                    Valido para a unidade Conveniencia Copasul
+                  </span>
+                  <button 
+                    onClick={() => setShowTermsModal(false)}
+                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                  >
+                    Entendido
                   </button>
                 </div>
               </motion.div>
