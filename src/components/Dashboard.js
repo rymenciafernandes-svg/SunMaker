@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
+import SupportChat from './SupportChat';
 
 const LOGIN_BG_IMAGE = "https://images.unsplash.com/photo-1545459720-aac8509eb02c?q=80&w=1920&auto=format&fit=crop"; 
 
@@ -2590,6 +2591,14 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
+          {/* CHAT DE SUPORTE EM TEMPO REAL */}
+      <SupportChat 
+        companyId={effectiveCompanyId}
+        currentUsername={currentUser?.username}
+        currentUserRole={currentUser?.role}
+        operatorUsername={impersonatedUser ? impersonatedUser.username : (adminInsideNotification ? currentUser?.username : null)}
+        isVisible={Boolean(impersonatedCompany || adminInsideNotification)}
+      />
     </div>
   );
 }
