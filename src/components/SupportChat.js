@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, X, Send, Shield, User } from 'lucide-react';
+import { MessageSquare, X, Send, Shield } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 export default function SupportChat({ 
@@ -16,11 +16,9 @@ export default function SupportChat({
   const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef(null);
 
-  // Não renderiza nada se o suporte não estiver ativo
-  if (!isVisible || !companyId || !operatorUsername) return null;
-
   // Busca o histórico inicial de mensagens desta sessão de suporte
   const fetchMessages = async () => {
+    if (!companyId || !operatorUsername) return;
     try {
       const { data, error } = await supabase
         .from('support_messages')
@@ -37,10 +35,12 @@ export default function SupportChat({
     }
   };
 
+  // Efeito 1: Sincronização e escuta em tempo real
   useEffect(() => {
+    if (!isVisible || !companyId || !operatorUsername) return;
+
     fetchMessages();
 
-    // Escuta novas mensagens em tempo real via WebSockets
     const channel = supabase
       .channel(`chat-${companyId}-${operatorUsername}`)
       .on(
@@ -65,14 +65,19 @@ export default function SupportChat({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [companyId, operatorUsername, isOpen, currentUsername]);
+  }, [companyId, operatorUsername, isOpen, currentUsername, isVisible]);
 
-  // Rola automaticamente para a última mensagem
+  // Efeito 2: Rolar automaticamente para a última mensagem recebida
   useEffect(() => {
     if (isOpen) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isOpen]);
+
+  // Verificação de visibilidade posicionada APÓS todos os Hooks
+  if (!isVisible || !companyId || !operatorUsername) {
+    return null;
+  }
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -196,7 +201,7 @@ export default function SupportChat({
         )}
       </AnimatePresence>
 
-      {/* BOTÃO FLUTUANTE CIRCULAR (LOCAL INDICADO NO PRINT) */}
+      {/* BOTÃO FLUTUANTE CIRCULAR */}
       <button
         onClick={handleToggleOpen}
         className="w-14 h-14 rounded-full bg-amber-500 hover:bg-amber-400 text-black shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer relative border-2 border-amber-300/40"
