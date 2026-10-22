@@ -6,7 +6,7 @@ import {
   Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
   BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, Lock, Building2,
   Settings, Sliders, Printer, Camera, User, ToggleLeft, ToggleRight, ExternalLink,
-  ChevronRight
+  Radio, ShieldAlert, ArrowLeft
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -17,8 +17,17 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Modo Suporte (Super Admin visualizando uma empresa sob demanda)
+  // Modo Suporte (Super Admin espelhando empresa e operador)
   const [impersonatedCompany, setImpersonatedCompany] = useState(null);
+  const [impersonatedUser, setImpersonatedUser] = useState(null);
+
+  // Aviso na tela do cliente quando o Admin estiver dentro
+  const [adminInsideNotification, setAdminInsideNotification] = useState(null);
+
+  // Modal para escolher qual operador acessar dentro da empresa
+  const [showCompanyUsersModal, setShowCompanyUsersModal] = useState(false);
+  const [selectedCompanyForImpersonation, setSelectedCompanyForImpersonation] = useState(null);
+  const [companyOperatorsList, setCompanyOperatorsList] = useState([]);
 
   // Estados de Login
   const [username, setUsername] = useState('');
@@ -48,7 +57,7 @@ export default function App() {
   const [editingPasswordUserId, setEditingPasswordUserId] = useState(null);
   const [updatedPasswordValue, setUpdatedPasswordValue] = useState('');
 
-  // Configurações - Painel B2B do Administrador Geral (Gestão de Empresas)
+  // Configurações - Painel B2B do Administrador Geral
   const [companiesList, setCompaniesList] = useState([]);
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newCompanySlug, setNewCompanySlug] = useState('');
@@ -76,6 +85,7 @@ export default function App() {
   const isSuperAdmin = currentUser?.username === 'admin' || currentUser?.role === 'superadmin';
   const effectiveCompanyId = impersonatedCompany ? impersonatedCompany.company_id : currentUser?.company_id;
 
+  // Carrega usuário salvo e termos
   useEffect(() => {
     const savedUser = localStorage.getItem('sunmaker_user');
     if (savedUser) {
@@ -99,6 +109,40 @@ export default function App() {
       }
     }
   }, []);
+
+  // Heartbeat de Presença (Online/Offline) e Verificação de Suporte Ativo
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser || isSuperAdmin) return;
+
+    const pingActivity = async () => {
+      try {
+        await supabase
+          .from('app_users')
+          .update({ last_seen_at: new Date().toISOString() })
+          .ilike('username', currentUser.username)
+          .eq('company_id', currentUser.company_id);
+
+        const { data } = await supabase
+          .from('app_users')
+          .select('active_support_by')
+          .ilike('username', currentUser.username)
+          .eq('company_id', currentUser.company_id)
+          .maybeSingle();
+
+        if (data && data.active_support_by) {
+          setAdminInsideNotification(data.active_support_by);
+        } else {
+          setAdminInsideNotification(null);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    pingActivity();
+    const interval = setInterval(pingActivity, 15000); // Atualiza a cada 15 segundos
+    return () => clearInterval(interval);
+  }, [isAuthenticated, currentUser, isSuperAdmin]);
 
   const saveCompliance = (type) => {
     const compliance = {
@@ -127,7 +171,7 @@ export default function App() {
     setShowPrivacyModal(true);
   };
 
-  // --- AUTENTICAÇÃO COM SEPARAÇÃO DO SUPER ADMIN ---
+  // --- AUTENTICAÇÃO ---
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
@@ -154,8 +198,9 @@ export default function App() {
       localStorage.setItem('sunmaker_user', JSON.stringify(superAdminObj));
       setCurrentUser(superAdminObj);
       setImpersonatedCompany(null);
+      setImpersonatedUser(null);
       setIsAuthenticated(true);
-      setProducts([]); // Inicializa sem carregar dados de terceiros
+      setProducts([]);
       return;
     }
 
@@ -193,6 +238,7 @@ export default function App() {
       localStorage.setItem('sunmaker_user', JSON.stringify(userObj));
       setCurrentUser(userObj);
       setImpersonatedCompany(null);
+      setImpersonatedUser(null);
       setIsAuthenticated(true);
       fetchProducts(companyId);
       return;
@@ -201,30 +247,77 @@ export default function App() {
     setAuthError('Usuário ou senha incorretos.');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (impersonatedUser && impersonatedCompany) {
+      await handleStopImpersonation();
+    }
     localStorage.removeItem('sunmaker_user');
     setIsAuthenticated(false);
     setCurrentUser(null);
     setImpersonatedCompany(null);
+    setImpersonatedUser(null);
     setUsername('');
     setPassword('');
     setProducts([]);
     setShowSettingsModal(false);
   };
 
-  // --- MODO SUPORTE (SUPER ADMIN ENTRA NO AMBIENTE DE UM CLIENTE) ---
-  const handleStartImpersonation = (company) => {
-    setImpersonatedCompany(company);
-    fetchProducts(company.company_id);
-    setShowSettingsModal(false);
+  // --- GESTÃO DE OPERADORES ONLINE & MODO SUPORTE ---
+  const handleOpenCompanyUsers = async (company) => {
+    setSelectedCompanyForImpersonation(company);
+    setShowCompanyUsersModal(true);
+
+    const { data } = await supabase
+      .from('app_users')
+      .select('*')
+      .eq('company_id', company.company_id)
+      .order('created_at', { ascending: false });
+
+    if (data) setCompanyOperatorsList(data);
   };
 
-  const handleStopImpersonation = () => {
+  const handleStartImpersonationWithUser = async (targetUser) => {
+    try {
+      // Sinaliza no banco que o Super Admin está dentro da sessão desta operadora
+      await supabase
+        .from('app_users')
+        .update({ active_support_by: currentUser.username })
+        .eq('id', targetUser.id);
+
+      setImpersonatedCompany(selectedCompanyForImpersonation);
+      setImpersonatedUser(targetUser);
+      fetchProducts(selectedCompanyForImpersonation.company_id);
+      setShowCompanyUsersModal(false);
+      setShowSettingsModal(false);
+    } catch (err) {
+      console.error("Erro ao iniciar suporte:", err);
+    }
+  };
+
+  const handleStopImpersonation = async () => {
+    if (impersonatedUser) {
+      try {
+        // Remove a notificação da tela do cliente
+        await supabase
+          .from('app_users')
+          .update({ active_support_by: null })
+          .eq('id', impersonatedUser.id);
+      } catch (err) {
+        console.error("Erro ao encerrar suporte:", err);
+      }
+    }
     setImpersonatedCompany(null);
+    setImpersonatedUser(null);
     setProducts([]);
   };
 
-  // --- CONSULTAS E AÇÕES B2B (SUPER ADMIN) ---
+  const isUserOnline = (lastSeen) => {
+    if (!lastSeen) return false;
+    const diffInMinutes = (new Date() - new Date(lastSeen)) / (1000 * 60);
+    return diffInMinutes <= 5;
+  };
+
+  // --- CONSULTAS E AÇÕES B2B ---
   const fetchCompanies = async () => {
     const { data } = await supabase.from('companies').select('*').order('created_at', { ascending: false });
     if (data) setCompaniesList(data);
@@ -950,383 +1043,40 @@ export default function App() {
   };
 
   // ==========================================
-  // TELA DE LOGIN B2B
-  // ==========================================
-  if (!isAuthenticated) {
-    return (
-      <div 
-        className="min-h-screen w-full flex items-center justify-start p-6 md:p-16 lg:p-24 relative bg-cover bg-center"
-        style={{ backgroundImage: `url("${LOGIN_BG_IMAGE}")` }}
-      >
-        <div className="absolute inset-0 bg-black/45 backdrop-blur-[1px]" />
-
-        <motion.div 
-          initial={{ opacity: 0, x: -40 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5 }}
-          className="relative z-10 w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-100 flex flex-col justify-between"
-        >
-          <div className="p-8 pb-6">
-            <div className="pb-5 border-b border-gray-200 mb-6">
-              <h1 className="text-3xl font-black italic tracking-tighter text-amber-500">
-                SunMaker
-              </h1>
-              <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase mt-0.5">
-                Portal de Inteligência Comercial
-              </p>
-            </div>
-
-            {authError && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-4 p-2.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-medium text-center leading-relaxed">
-                {authError}
-              </motion.div>
-            )}
-
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <input 
-                  type="text"
-                  placeholder="Nome de Usuário"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-gray-100 text-gray-800 text-sm px-4 py-3 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
-                  required
-                />
-              </div>
-
-              <div className="relative">
-                <input 
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Senha de Acesso"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-blue-50/50 text-gray-800 text-sm px-4 py-3 pr-11 rounded-lg outline-none border border-transparent focus:border-amber-500 focus:bg-white transition-all placeholder:text-gray-400 font-medium"
-                  required
-                />
-                <button 
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800 transition-colors"
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-
-              <button 
-                type="submit"
-                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3 rounded-lg text-sm tracking-wide shadow-md hover:shadow-lg transition-all cursor-pointer"
-              >
-                Acessar
-              </button>
-
-              <div className="text-center pt-2">
-                <a 
-                  href="#" 
-                  onClick={(e) => { 
-                    e.preventDefault(); 
-                    alert("Para redefinir sua credencial ou contratar novos acessos, contate o administrador da plataforma."); 
-                  }}
-                  className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
-                >
-                  Recuperação de senha e suporte
-                </a>
-              </div>
-            </form>
-          </div>
-
-          <div className="bg-gray-50/80 p-5 px-8 border-t border-gray-100 space-y-2 text-xs text-gray-600">
-            <div 
-              onClick={handleOpenHelp}
-              className="flex items-center justify-between cursor-pointer hover:text-gray-900 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <HelpCircle size={14} className="text-gray-400" />
-                <span>Central de ajuda</span>
-              </div>
-              <span className={`text-[10px] font-semibold ${readHelp ? 'text-emerald-600' : 'text-amber-600'}`}>
-                {readHelp ? '[Lido]' : '[Pendente]'}
-              </span>
-            </div>
-
-            <div 
-              onClick={handleOpenTerms}
-              className="flex items-center justify-between cursor-pointer hover:text-gray-900 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <Info size={14} className="text-gray-400" />
-                <span>Termos de uso</span>
-              </div>
-              <span className={`text-[10px] font-semibold ${readTerms ? 'text-emerald-600' : 'text-amber-600'}`}>
-                {readTerms ? '[Lido]' : '[Pendente]'}
-              </span>
-            </div>
-
-            <div 
-              onClick={handleOpenPrivacy}
-              className="flex items-center justify-between cursor-pointer hover:text-gray-900 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <FileText size={14} className="text-gray-400" />
-                <span>Política de privacidade</span>
-              </div>
-              <span className={`text-[10px] font-semibold ${readPrivacy ? 'text-emerald-600' : 'text-amber-600'}`}>
-                {readPrivacy ? '[Lido]' : '[Pendente]'}
-              </span>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* MODAL CENTRAL DE AJUDA */}
-        <AnimatePresence>
-          {showHelpModal && (
-            <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-              <motion.div 
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl text-white"
-              >
-                <div className="p-6 border-b border-neutral-800 flex justify-between items-center bg-black/40">
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="text-amber-500" size={22} />
-                    <h3 className="text-lg font-bold text-white">Central de Ajuda - SunMaker</h3>
-                  </div>
-                  <button 
-                    onClick={() => setShowHelpModal(false)} 
-                    className="text-gray-400 hover:text-white p-1 rounded-lg"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-
-                <div className="p-6 max-h-[75vh] overflow-y-auto space-y-5 text-sm">
-                  <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
-                    <div className="flex items-center gap-2 text-amber-400 font-semibold mb-1.5">
-                      <FileSpreadsheet size={16} />
-                      <h4>Como importar relatórios do sistema Xpert</h4>
-                    </div>
-                    <p className="text-gray-300 text-xs leading-relaxed">
-                      1. No sistema de gestão (Xpert ou compatível), emita o relatório de produtos em formato CSV.<br/>
-                      2. Acesse o painel do SunMaker e clique em "Upload Relatório" no topo.<br/>
-                      3. O sistema processa automaticamente arquivos com milhares de itens em lotes contínuos para a sua empresa.
-                    </p>
-                  </div>
-
-                  <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
-                    <div className="flex items-center gap-2 text-emerald-400 font-semibold mb-1.5">
-                      <Calculator size={16} />
-                      <h4>Definição de preços e cálculo automático</h4>
-                    </div>
-                    <p className="text-gray-300 text-xs leading-relaxed">
-                      Ao invés de calcular porcentagens de cabeça, digite o preço final de venda (em R$) diretamente na coluna "Definir Preço" da tabela e pressione Enter. O sistema recalcula a margem e o lucro líquido do lote na hora.
-                    </p>
-                  </div>
-
-                  <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
-                    <div className="flex items-center gap-2 text-blue-400 font-semibold mb-1.5">
-                      <Shield size={16} />
-                      <h4>Diferença entre Markup e Margem Real</h4>
-                    </div>
-                    <p className="text-gray-300 text-xs leading-relaxed">
-                      O SunMaker lê os cabeçalhos do arquivo exportado e identifica automaticamente se os dados foram gerados como Markup (acréscimo sobre o custo) ou Margem Real (lucro sobre a venda), garantindo consistência matemática com o sistema do estabelecimento.
-                    </p>
-                  </div>
-
-                  <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
-                    <div className="flex items-center gap-2 text-red-400 font-semibold mb-1.5">
-                      <PhoneCall size={16} />
-                      <h4>Esquecimento de senha e suporte operacional</h4>
-                    </div>
-                    <p className="text-gray-300 text-xs leading-relaxed">
-                      Por motivos de segurança interna, senhas não são redefinidas publicamente. Caso esqueça sua credencial de acesso, solicite a um operador com perfil Administrador para redefinir sua senha diretamente na aba "Usuários" das Configurações.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-neutral-950 border-t border-neutral-800 text-right">
-                  <button 
-                    onClick={() => setShowHelpModal(false)}
-                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
-                  >
-                    Confirmar Leitura e Fechar
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-
-        {/* MODAL TERMOS DE USO */}
-        <AnimatePresence>
-          {showTermsModal && (
-            <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-              <motion.div 
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl text-white"
-              >
-                <div className="p-6 border-b border-neutral-800 flex justify-between items-center bg-black/40">
-                  <div className="flex items-center gap-2">
-                    <Scale className="text-amber-500" size={22} />
-                    <h3 className="text-lg font-bold text-white">Termos de Uso - Plataforma SunMaker</h3>
-                  </div>
-                  <button 
-                    onClick={() => setShowTermsModal(false)} 
-                    className="text-gray-400 hover:text-white p-1 rounded-lg"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-
-                <div className="p-6 max-h-[75vh] overflow-y-auto space-y-4 text-xs leading-relaxed text-gray-300">
-                  <div className="border-l-2 border-amber-500 pl-3">
-                    <h4 className="text-sm font-bold text-white mb-1">1. Objeto e Finalidade</h4>
-                    <p>
-                      A plataforma SunMaker é uma ferramenta corporativa de gestão de preços, sincronização de relatórios e análise de rentabilidade comercial. O acesso é restrito a estabelecimentos contratantes e usuários previamente homologados.
-                    </p>
-                  </div>
-
-                  <div className="border-l-2 border-amber-500 pl-3">
-                    <h4 className="text-sm font-bold text-white mb-1">2. Confidencialidade Comercial</h4>
-                    <p>
-                      Todos os dados contidos na plataforma, incluindo custos de aquisição de produtos, margens praticadas, estoque físico e projeções de lucratividade, constituem informações confidenciais e segredo comercial. É terminantemente proibida a extração ou repasse desses registros para terceiros não autorizados.
-                    </p>
-                  </div>
-
-                  <div className="border-l-2 border-amber-500 pl-3">
-                    <h4 className="text-sm font-bold text-white mb-1">3. Responsabilidade pelas Credenciais</h4>
-                    <p>
-                      Cada operador é responsável pela segurança de seu login e senha. Quaisquer ações executadas na base de dados serão registradas e vinculadas à conta autenticada no momento da operação.
-                    </p>
-                  </div>
-
-                  <div className="border-l-2 border-amber-500 pl-3">
-                    <h4 className="text-sm font-bold text-white mb-1">4. Integridade das Operações</h4>
-                    <p>
-                      O usuário compromete-se a conferir a integridade dos relatórios importados e dos valores aplicados na tabela, ciente de que a precificação incorreta reflete diretamente no faturamento e nos resultados financeiros do negócio.
-                    </p>
-                  </div>
-
-                  <div className="border-l-2 border-amber-500 pl-3">
-                    <h4 className="text-sm font-bold text-white mb-1">5. Auditoria e Encerramento de Acesso</h4>
-                    <p>
-                      A administração reserva-se o direito de monitorar o uso da ferramenta, redefinir senhas, alterar níveis de permissão (Operador ou Administrador) e revogar acessos de usuários inativos, desligados ou com assinaturas suspensas.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-neutral-950 border-t border-neutral-800 flex justify-between items-center">
-                  <span className="text-[11px] text-gray-500">
-                    Termos e Condições Gerais de Uso da Plataforma
-                  </span>
-                  <button 
-                    onClick={() => setShowTermsModal(false)}
-                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
-                  >
-                    Confirmar Leitura e Fechar
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-
-        {/* MODAL POLÍTICA DE PRIVACIDADE */}
-        <AnimatePresence>
-          {showPrivacyModal && (
-            <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-              <motion.div 
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl text-white"
-              >
-                <div className="p-6 border-b border-neutral-800 flex justify-between items-center bg-black/40">
-                  <div className="flex items-center gap-2">
-                    <Lock className="text-amber-500" size={22} />
-                    <h3 className="text-lg font-bold text-white">Política de Privacidade - Plataforma SunMaker</h3>
-                  </div>
-                  <button 
-                    onClick={() => setShowPrivacyModal(false)} 
-                    className="text-gray-400 hover:text-white p-1 rounded-lg"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-
-                <div className="p-6 max-h-[75vh] overflow-y-auto space-y-4 text-xs leading-relaxed text-gray-300">
-                  <div className="border-l-2 border-emerald-500 pl-3">
-                    <h4 className="text-sm font-bold text-white mb-1">1. Coleta e Tratamento de Dados</h4>
-                    <p>
-                      A plataforma SunMaker realiza o tratamento mínimo de dados necessários para a operação comercial, coletando exclusivamente nomes de usuário de acesso, perfis de função (Operador ou Administrador), identificador de empresa e metadados de modificação nos registros de estoque e precificação.
-                    </p>
-                  </div>
-
-                  <div className="border-l-2 border-emerald-500 pl-3">
-                    <h4 className="text-sm font-bold text-white mb-1">2. Armazenamento e Segurança da Informação</h4>
-                    <p>
-                      Todas as informações são armazenadas em infraestrutura de nuvem segura provida pelo Supabase, empregando criptografia em trânsito (protocolo TLS/SSL), isolamento lógico multi-empresa e controles de acesso restritos.
-                    </p>
-                  </div>
-
-                  <div className="border-l-2 border-emerald-500 pl-3">
-                    <h4 className="text-sm font-bold text-white mb-1">3. Não Compartilhamento com Terceiros</h4>
-                    <p>
-                      Nenhum dado cadastral ou comercial registrado no SunMaker é vendido, alugado, transferido ou compartilhado com plataformas externas para fins publicitários ou comerciais. Os registros pertencem unicamente à administração do estabelecimento contratante.
-                    </p>
-                  </div>
-
-                  <div className="border-l-2 border-emerald-500 pl-3">
-                    <h4 className="text-sm font-bold text-white mb-1">4. Conformidade com a Legislação (LGPD)</h4>
-                    <p>
-                      Em estrito cumprimento à Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018), os usuários têm o direito de confirmar a existência de tratamento de seus dados e solicitar retificações mediante solicitação formal ao gestor da plataforma.
-                    </p>
-                  </div>
-
-                  <div className="border-l-2 border-emerald-500 pl-3">
-                    <h4 className="text-sm font-bold text-white mb-1">5. Retenção de Dados e Histórico Operacional</h4>
-                    <p>
-                      Os registros operacionais e históricos de preços permanecem armazenados pelo período necessário para atender a auditorias financeiras internas, cumprimento de obrigações tributárias e avaliação do ciclo comercial da empresa.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-neutral-950 border-t border-neutral-800 flex justify-between items-center">
-                  <span className="text-[11px] text-gray-500">
-                    Diretrizes de Privacidade e Proteção de Dados Pessoais
-                  </span>
-                  <button 
-                    onClick={() => setShowPrivacyModal(false)}
-                    className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
-                  >
-                    Confirmar Leitura e Fechar
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  }
-
-  // ==========================================
   // DASHBOARD PRINCIPAL
   // ==========================================
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans text-white">
-      {/* BARRA DE AVISO DO MODO SUPORTE (SE ATIVO) */}
-      {impersonatedCompany && (
+      {/* AVISO NA TELA DO CLIENTE QUANDO O ADMIN ESTIVER DENTRO */}
+      {adminInsideNotification && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          className="mb-6 p-3.5 bg-blue-950/80 border border-blue-500/50 rounded-xl flex items-center justify-between text-xs text-blue-200 shadow-xl no-print"
+        >
+          <div className="flex items-center gap-2.5">
+            <ShieldAlert size={18} className="text-blue-400 animate-pulse" />
+            <span>
+              <strong>Aviso de Auditoria e Suporte:</strong> O Administrador Geral ({adminInsideNotification}) está conectado acompanhando este ambiente em tempo real.
+            </span>
+          </div>
+          <span className="bg-blue-900/60 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider">
+            Sessão Monitorada
+          </span>
+        </motion.div>
+      )}
+
+      {/* BARRA SUPERIOR QUANDO O SUPER ADMIN ESTIVER ESPELHANDO ALGUÉM */}
+      {impersonatedCompany && impersonatedUser && (
         <motion.div 
           initial={{ opacity: 0, y: -10 }} 
           animate={{ opacity: 1, y: 0 }} 
           className="mb-6 p-3 bg-amber-500/15 border border-amber-500/40 rounded-xl flex items-center justify-between text-xs text-amber-300 no-print"
         >
           <div className="flex items-center gap-2">
-            <Shield size={16} className="text-amber-400" />
+            <Radio size={16} className="text-amber-400 animate-pulse" />
             <span>
-              <strong>[Modo Suporte Ativo]:</strong> Conectado temporariamente ao ambiente da empresa: <strong>{impersonatedCompany.company_name}</strong> ({impersonatedCompany.company_id}).
+              <strong>[Modo Suporte Ativo]:</strong> Espelhando o perfil de: <strong>{impersonatedUser.username}</strong> ({impersonatedUser.role || 'operador'}) | Loja: <strong>{impersonatedCompany.company_name}</strong>.
             </span>
           </div>
 
@@ -1334,7 +1084,7 @@ export default function App() {
             onClick={handleStopImpersonation}
             className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-3 py-1 rounded-lg transition-all cursor-pointer"
           >
-            Encerrar Suporte
+            Encerrar Espelho
           </button>
         </motion.div>
       )}
@@ -1350,7 +1100,7 @@ export default function App() {
             SunMaker
           </motion.h1>
           <p className="text-gray-400 mt-1 text-sm">
-            {isSuperAdmin && !impersonatedCompany ? "Painel Master - Gestão de Plataforma" : "Dashboard de Inteligência"}
+            {isSuperAdmin && !impersonatedCompany ? "Painel Master - Gestão da Plataforma" : "Dashboard de Inteligência"}
           </p>
         </div>
         
@@ -1423,7 +1173,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* TELA INFORMATIVA DO SUPER ADMIN QUANDO NÃO HÁ EMPRESA EM MODO SUPORTE */}
+      {/* PAINEL INICIAL QUANDO O SUPER ADMIN ESTIVER NA SESSÃO MASTER NEUTRA */}
       {isSuperAdmin && !impersonatedCompany ? (
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 mb-8 text-center space-y-4 shadow-xl">
           <div className="w-14 h-14 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-center mx-auto text-amber-500">
@@ -1432,7 +1182,7 @@ export default function App() {
           <div>
             <h2 className="text-xl font-bold text-white">Sessão Geral de Super Administrador</h2>
             <p className="text-gray-400 text-xs max-w-md mx-auto mt-1 leading-relaxed">
-              Você está conectado como gestor global da plataforma. Os produtos e relatórios de clientes não são exibidos por padrão para garantir a privacidade dos dados.
+              Você está conectado como gestor mestre. Escolha uma das empresas clientes registradas para verificar operadores online e prestar suporte.
             </p>
           </div>
           <div className="pt-2">
@@ -1445,7 +1195,7 @@ export default function App() {
               className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-5 py-2.5 rounded-lg text-xs transition-all cursor-pointer inline-flex items-center gap-2"
             >
               <Building2 size={15} />
-              Gerenciar Empresas e Acessar Ambientes de Clientes
+              Ver Empresas e Operadores Cadastrados
             </button>
           </div>
         </div>
@@ -1694,96 +1444,191 @@ export default function App() {
                               <div className="flex items-center bg-black border border-emerald-500/70 rounded px-2.5 py-1">
                                 <span className="text-gray-400 text-xs mr-1">R$</span>
                                 <input 
-                              type="number" 
-                              step="0.01"
-                              value={editForm.price} 
-                              onChange={(e) => handleEditPriceChange(e.target.value)}
-                              placeholder="0.00"
-                              className="w-20 bg-transparent text-sm text-emerald-400 font-semibold outline-none"
+                                  type="number" 
+                                  step="0.01"
+                                  value={editForm.price} 
+                                  onChange={(e) => handleEditPriceChange(e.target.value)}
+                                  placeholder="0.00"
+                                  className="w-20 bg-transparent text-sm text-emerald-400 font-semibold outline-none"
+                                />
+                              </div>
+                            ) : (
+                              marginVal > 0
+                                ? <span className="text-gray-200">R$ {suggestedPrice.toFixed(2)}</span>
+                                : <span className="text-gray-600">-</span>
+                            )}
+                          </td>
+
+                          <td className="p-4 font-mono text-sm font-semibold">
+                            {!isEditing && marginVal > 0
+                              ? <span className="text-emerald-400">R$ {lotProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              : <span className="text-gray-600">-</span>
+                            }
+                          </td>
+                          
+                          <td className="p-4 no-print">
+                            {isEditing ? (
+                              <div className="flex items-center justify-center gap-2">
+                                <button onClick={() => saveEditing(product.id)} className="p-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded cursor-pointer" title="Confirmar">
+                                  <Check size={18} />
+                                </button>
+                                <button onClick={cancelEditing} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded cursor-pointer" title="Cancelar">
+                                  <X size={18} />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center gap-2">
+                                <div className="flex items-center bg-black border border-neutral-700 rounded px-2 py-1 focus-within:border-amber-500 transition-colors" title="Digite o Preço Sugerido em R$ e aperte Enter">
+                                  <span className="text-gray-500 text-xs mr-1 font-semibold">R$</span>
+                                  <input 
+                                    type="number" 
+                                    step="0.01"
+                                    placeholder="0,00" 
+                                    className="w-16 bg-transparent text-sm outline-none text-white placeholder:text-gray-600 font-mono"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        handleSetPrice(product.id, e.target.value);
+                                        e.target.value = '';
+                                      }
+                                    }}
+                                    onBlur={(e) => {
+                                      if (e.target.value) {
+                                        handleSetPrice(product.id, e.target.value);
+                                        e.target.value = '';
+                                      }
+                                    }}
+                                  />
+                                </div>
+
+                                <button 
+                                  onClick={() => startEditing(product)} 
+                                  className="p-1.5 text-gray-400 hover:text-amber-400 hover:bg-amber-400/10 rounded transition-colors cursor-pointer" 
+                                  title="Editar Dados"
+                                >
+                                  <Edit3 size={16} />
+                                </button>
+                                <button 
+                                  onClick={() => handleRemoveMargin(product.id)} 
+                                  className="p-1.5 text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded transition-colors cursor-pointer" 
+                                  title="Zerar Margem"
+                                >
+                                  <AlertCircle size={16} />
+                                </button>
+                                <button 
+                                  onClick={() => handleDeleteProduct(product.id)} 
+                                  className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors cursor-pointer" 
+                                  title="Excluir Produto"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        </>
+      )}
+
+      {/* MODAL DE OPERADORES ONLINE/OFFLINE DA EMPRESA SELECIONADA */}
+      <AnimatePresence>
+        {showCompanyUsersModal && selectedCompanyForImpersonation && (
+          <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl"
+            >
+              <div className="p-5 border-b border-neutral-800 flex justify-between items-center bg-black/40">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Building2 className="text-amber-500" size={18} />
+                    {selectedCompanyForImpersonation.company_name}
+                  </h3>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    Selecione o operador para espelhar a tela em tempo real
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setShowCompanyUsersModal(false)}
+                  className="text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-3 max-h-80 overflow-y-auto">
+                {companyOperatorsList.length === 0 ? (
+                  <p className="text-xs text-gray-500 italic text-center py-6">
+                    Nenhum colaborador cadastrado nesta empresa ainda.
+                  </p>
+                ) : (
+                  companyOperatorsList.map(u => {
+                    const online = isUserOnline(u.last_seen_at);
+                    return (
+                      <div 
+                        key={u.id}
+                        className="bg-neutral-950 p-3.5 rounded-xl border border-neutral-800/80 flex items-center justify-between hover:border-neutral-700 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="relative">
+                            <div className="w-10 h-10 rounded-full bg-neutral-900 border border-neutral-700 overflow-hidden flex items-center justify-center text-amber-500 font-bold uppercase text-sm">
+                              {u.avatar_url ? (
+                                <img src={u.avatar_url} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                u.username.charAt(0)
+                              )}
+                            </div>
+                            <span 
+                              className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-neutral-950 ${online ? 'bg-emerald-500' : 'bg-neutral-600'}`}
+                              title={online ? 'Online' : 'Offline'}
                             />
                           </div>
-                        ) : (
-                          marginVal > 0
-                            ? <span className="text-gray-200">R$ {suggestedPrice.toFixed(2)}</span>
-                            : <span className="text-gray-600">-</span>
-                        )}
-                      </td>
 
-                      <td className="p-4 font-mono text-sm font-semibold">
-                        {!isEditing && marginVal > 0
-                          ? <span className="text-emerald-400">R$ {lotProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                          : <span className="text-gray-600">-</span>
-                        }
-                      </td>
-                      
-                      <td className="p-4 no-print">
-                        {isEditing ? (
-                          <div className="flex items-center justify-center gap-2">
-                            <button onClick={() => saveEditing(product.id)} className="p-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded cursor-pointer" title="Confirmar">
-                              <Check size={18} />
-                            </button>
-                            <button onClick={cancelEditing} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded cursor-pointer" title="Cancelar">
-                              <X size={18} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center gap-2">
-                            <div className="flex items-center bg-black border border-neutral-700 rounded px-2 py-1 focus-within:border-amber-500 transition-colors" title="Digite o Preço Sugerido em R$ e aperte Enter">
-                              <span className="text-gray-500 text-xs mr-1 font-semibold">R$</span>
-                              <input 
-                                type="number" 
-                                step="0.01"
-                                placeholder="0,00" 
-                                className="w-16 bg-transparent text-sm outline-none text-white placeholder:text-gray-600 font-mono"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    handleSetPrice(product.id, e.target.value);
-                                    e.target.value = '';
-                                  }
-                                }}
-                                onBlur={(e) => {
-                                  if (e.target.value) {
-                                    handleSetPrice(product.id, e.target.value);
-                                    e.target.value = '';
-                                  }
-                                }}
-                              />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-sm text-white">{u.username}</span>
+                              <span className={`text-[10px] px-2 py-0.2 rounded font-bold uppercase tracking-wider ${online ? 'bg-emerald-950 text-emerald-400 border border-emerald-900' : 'bg-neutral-800 text-gray-400'}`}>
+                                {online ? 'Online' : 'Offline'}
+                              </span>
                             </div>
-
-                            <button 
-                              onClick={() => startEditing(product)} 
-                              className="p-1.5 text-gray-400 hover:text-amber-400 hover:bg-amber-400/10 rounded transition-colors cursor-pointer" 
-                              title="Editar Dados"
-                            >
-                              <Edit3 size={16} />
-                            </button>
-                            <button 
-                              onClick={() => handleRemoveMargin(product.id)} 
-                              className="p-1.5 text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded transition-colors cursor-pointer" 
-                              title="Zerar Margem"
-                            >
-                              <AlertCircle size={16} />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteProduct(product.id)} 
-                              className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors cursor-pointer" 
-                              title="Excluir Produto"
-                            >
-                              <Trash2 size={16} />
-                            </button>
+                            <p className="text-[11px] text-gray-500 capitalize">
+                              Função: {u.role || 'operador'} {u.last_seen_at ? `| Visto: ${new Date(u.last_seen_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                            </p>
                           </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </motion.div>
-      </>
-      )}
+                        </div>
+
+                        <button
+                          onClick={() => handleStartImpersonationWithUser(u)}
+                          className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+                        >
+                          <ExternalLink size={13} />
+                          Espelhar Perfil
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="p-4 bg-neutral-950 border-t border-neutral-800 text-right">
+                <button
+                  onClick={() => setShowCompanyUsersModal(false)}
+                  className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  Voltar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* MODAL CENTRAL DE CONFIGURAÇÕES */}
       <AnimatePresence>
@@ -1835,7 +1680,6 @@ export default function App() {
                       Empresa e Conta
                     </button>
 
-                    {/* ABA EXCLUSIVA DO SUPER ADMINISTRADOR */}
                     {isSuperAdmin && (
                       <button
                         onClick={() => { setActiveSettingsTab('empresas'); fetchCompanies(); }}
@@ -1990,7 +1834,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* ABA: GESTÃO DE EMPRESAS B2B COM ACESSO DIRETO A SUPORTE */}
+                  {/* ABA: GESTÃO DE EMPRESAS B2B */}
                   {activeSettingsTab === 'empresas' && isSuperAdmin && (
                     <div className="space-y-6">
                       <form onSubmit={handleCreateCompanyB2B} className="bg-black/40 border border-neutral-800 p-4 rounded-xl space-y-3">
@@ -2074,11 +1918,11 @@ export default function App() {
 
                               <div className="flex items-center gap-2">
                                 <button
-                                  onClick={() => handleStartImpersonation(comp)}
+                                  onClick={() => handleOpenCompanyUsers(comp)}
                                   className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
-                                  title="Acessar ambiente desta loja como suporte"
+                                  title="Acessar ambiente e ver colaboradores online"
                                 >
-                                  <ExternalLink size={14} />
+                                  <Users size={14} />
                                   Acessar Ambiente
                                 </button>
 
@@ -2279,10 +2123,12 @@ export default function App() {
                             <span className="font-mono text-blue-400 font-semibold">{currentUser?.company_id}</span>
                           </div>
 
-                          {impersonatedCompany && (
+                          {impersonatedCompany && impersonatedUser && (
                             <div className="flex justify-between py-1 border-b border-neutral-900 bg-amber-500/10 px-2 rounded">
                               <span className="text-amber-400">Ambiente em Suporte:</span>
-                              <span className="font-bold text-amber-300">{impersonatedCompany.company_name} ({impersonatedCompany.company_id})</span>
+                              <span className="font-bold text-amber-300">
+                                {impersonatedCompany.company_name} (Perfil: {impersonatedUser.username})
+                              </span>
                             </div>
                           )}
 
