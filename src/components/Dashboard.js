@@ -6,7 +6,7 @@ import {
   Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
   BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, Lock, Building2,
   Settings, Sliders, Printer, Camera, User, ToggleLeft, ToggleRight, ExternalLink,
-  ChevronRight, Radio, ShieldAlert
+  ChevronRight, ShieldAlert
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -17,14 +17,14 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Modo Suporte (Super Admin visualizando uma empresa e operador sob demanda)
+  // Modo Suporte (Super Admin visualizando uma empresa sob demanda)
   const [impersonatedCompany, setImpersonatedCompany] = useState(null);
   const [impersonatedUser, setImpersonatedUser] = useState(null);
 
-  // Notificação para o operador quando o Admin estiver dentro do ambiente
+  // Notificação no ecrã do operador quando o Administrador estiver conectado
   const [adminInsideNotification, setAdminInsideNotification] = useState(null);
 
-  // Modal para escolher qual operador acessar dentro da empresa
+  // Modal para escolher operador da empresa
   const [showOperatorModal, setShowOperatorModal] = useState(false);
   const [selectedCompanyForOperators, setSelectedCompanyForOperators] = useState(null);
   const [companyOperatorsList, setCompanyOperatorsList] = useState([]);
@@ -40,7 +40,7 @@ export default function App() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
-  // Controle de Leitura Obrigatória
+  // Controlo de Leitura Obrigatória
   const [readHelp, setReadHelp] = useState(false);
   const [readTerms, setReadTerms] = useState(false);
   const [readPrivacy, setReadPrivacy] = useState(false);
@@ -49,7 +49,7 @@ export default function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState('usuarios');
 
-  // Configurações - Usuários da Empresa
+  // Configurações - Utilizadores da Empresa
   const [usersList, setUsersList] = useState([]);
   const [newUserName, setNewUserName] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
@@ -143,6 +143,44 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isAuthenticated, currentUser, isSuperAdmin]);
 
+  // SINCRONIZAÇÃO EM TEMPO REAL (SUPABASE REALTIME WEBSOCKETS)
+  useEffect(() => {
+    const targetCompany = effectiveCompanyId;
+    if (!targetCompany || targetCompany === 'sunmaker-master') return;
+
+    const channel = supabase
+      .channel(`realtime-products-${targetCompany}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'products'
+        },
+        (payload) => {
+          const changedRecord = payload.new || payload.old;
+          if (!changedRecord) {
+            fetchProducts(targetCompany);
+            return;
+          }
+
+          // Se a alteração pertence ao estabelecimento ativo, atualiza a lista em tempo real
+          if (
+            changedRecord.company_id === targetCompany ||
+            ((targetCompany === 'conveniencia-copasul' || targetCompany === 'empresa-padrao') &&
+              (!changedRecord.company_id || changedRecord.company_id === 'conveniencia-copasul' || changedRecord.company_id === 'empresa-padrao'))
+          ) {
+            fetchProducts(targetCompany);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [effectiveCompanyId]);
+
   const saveCompliance = (type) => {
     const compliance = {
       help: type === 'help' ? true : readHelp,
@@ -203,7 +241,7 @@ export default function App() {
       return;
     }
 
-    // 2. Acesso de Usuários das Empresas Clientes
+    // 2. Acesso de Utilizadores das Empresas Clientes
     const { data: userData } = await supabase
       .from('app_users')
       .select('*')
@@ -470,11 +508,15 @@ export default function App() {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('company_id', targetCompany)
-        .order('created_at', { ascending: false });
+      let query = supabase.from('products').select('*');
+
+      if (targetCompany === 'conveniencia-copasul' || targetCompany === 'empresa-padrao') {
+        query = query.or('company_id.eq.conveniencia-copasul,company_id.eq.empresa-padrao,company_id.is.null');
+      } else {
+        query = query.eq('company_id', targetCompany);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (!error && data) {
         setProducts(data);
@@ -588,8 +630,7 @@ export default function App() {
       await supabase
         .from('products')
         .update({ margin, is_new: false })
-        .eq('id', id)
-        .eq('company_id', targetCompany);
+        .eq('id', id);
     }
   };
 
@@ -604,8 +645,7 @@ export default function App() {
       await supabase
         .from('products')
         .update({ margin, is_new: false })
-        .eq('id', id)
-        .eq('company_id', targetCompany);
+        .eq('id', id);
     }
   };
 
@@ -617,8 +657,7 @@ export default function App() {
       await supabase
         .from('products')
         .update({ margin: null })
-        .eq('id', id)
-        .eq('company_id', targetCompany);
+        .eq('id', id);
     }
   };
 
@@ -633,8 +672,7 @@ export default function App() {
       await supabase
         .from('products')
         .delete()
-        .eq('id', id)
-        .eq('company_id', targetCompany);
+        .eq('id', id);
     }
   };
 
@@ -649,10 +687,14 @@ export default function App() {
       setProducts([]);
 
       try {
-        const { error } = await supabase
-          .from('products')
-          .delete()
-          .eq('company_id', targetCompany);
+        let query = supabase.from('products').delete();
+        if (targetCompany === 'conveniencia-copasul' || targetCompany === 'empresa-padrao') {
+          query = query.or('company_id.eq.conveniencia-copasul,company_id.eq.empresa-padrao,company_id.is.null');
+        } else {
+          query = query.eq('company_id', targetCompany);
+        }
+
+        const { error } = await query;
 
         if (error) {
           alert("Erro: " + error.message);
@@ -688,24 +730,16 @@ export default function App() {
     setProducts(products.map(p => ({ ...p, margin, is_new: false })));
 
     try {
-      const { error } = await supabase
-        .from('products')
-        .update({ margin, is_new: false })
-        .eq('company_id', targetCompany);
-
-      if (error) {
-        const idsToUpdate = products
-          .filter(p => typeof p.id === 'string' && !p.id.startsWith('local-'))
-          .map(p => p.id);
-        
-        for (let i = 0; i < idsToUpdate.length; i += 200) {
-          const batchIds = idsToUpdate.slice(i, i + 200);
-          await supabase
-            .from('products')
-            .update({ margin, is_new: false })
-            .in('id', batchIds)
-            .eq('company_id', targetCompany);
-        }
+      const idsToUpdate = products
+        .filter(p => typeof p.id === 'string' && !p.id.startsWith('local-'))
+        .map(p => p.id);
+      
+      for (let i = 0; i < idsToUpdate.length; i += 200) {
+        const batchIds = idsToUpdate.slice(i, i + 200);
+        await supabase
+          .from('products')
+          .update({ margin, is_new: false })
+          .in('id', batchIds);
       }
 
       alert(`Margem de ${margin}% aplicada com sucesso em todos os ${products.length} produtos.`);
@@ -817,10 +851,10 @@ export default function App() {
           margin: updatedMargin,
           is_new: false
         })
-        .eq('id', id)
-        .eq('company_id', targetCompany);
+        .eq('id', id);
     }
   };
+
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     const targetCompany = effectiveCompanyId;
@@ -1399,7 +1433,8 @@ export default function App() {
       </div>
     );
   }
-// ==========================================
+
+  // ==========================================
   // DASHBOARD PRINCIPAL
   // ==========================================
   return (
@@ -2509,10 +2544,7 @@ export default function App() {
                           {impersonatedCompany && (
                             <div className="flex justify-between py-1 border-b border-neutral-900 bg-amber-500/10 px-2 rounded">
                               <span className="text-amber-400">Ambiente em Suporte:</span>
-                              <span className="font-bold text-amber-300">
-                                {impersonatedCompany.company_name} ({impersonatedCompany.company_id})
-                                {impersonatedUser && ` - Espelhando: ${impersonatedUser.username}`}
-                              </span>
+                              <span className="font-bold text-amber-300">{impersonatedCompany.company_name} ({impersonatedCompany.company_id})</span>
                             </div>
                           )}
 
