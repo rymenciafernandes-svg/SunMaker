@@ -13,6 +13,7 @@ import Papa from 'papaparse';
 import SupportChat from './SupportChat';
 import LiveCursor from './LiveCursor';
 import MarginSimulator from './MarginSimulator';
+import PriceIntelligence from './PriceIntelligence';
 
 const LOGIN_BG_IMAGE = "https://images.unsplash.com/photo-1545459720-aac8509eb02c?q=80&w=1920&auto=format&fit=crop"; 
 
@@ -77,6 +78,7 @@ export default function App() {
   // Estados do Dashboard
   const [products, setProducts] = useState([]);
   const [showMarginSimulator, setShowMarginSimulator] = useState(false);
+  const [showPriceIntelligence, setShowPriceIntelligence] = useState(false);
   const [period, setPeriod] = useState('meses');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
@@ -1486,6 +1488,7 @@ export default function App() {
         </motion.div>
       )}
 
+      {showPriceIntelligence && <PriceIntelligence products={isSuperAdmin && !impersonatedCompany ? [] : products} onClose={() => setShowPriceIntelligence(false)} />}
       {showMarginSimulator && <MarginSimulator products={isSuperAdmin && !impersonatedCompany ? [] : products} onClose={() => setShowMarginSimulator(false)} />}
 
       {/* CABEÇALHO */}
@@ -1538,6 +1541,7 @@ export default function App() {
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading} />
           </label>
 
+          <button onClick={() => setShowPriceIntelligence(true)} className="bg-neutral-900 hover:bg-neutral-800 border border-amber-500/40 text-amber-400 font-semibold px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm" title="Analisar preços dos produtos"><TrendingUp size={16}/> Análise Inteligente</button>
           <button onClick={() => setShowMarginSimulator(true)} className="bg-neutral-900 hover:bg-neutral-800 border border-amber-500/40 text-amber-400 font-semibold px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm" title="Abrir simulador de margens"><Calculator size={16}/> Simular Margem</button>
 
           {/* Botão Central de Configurações */}
