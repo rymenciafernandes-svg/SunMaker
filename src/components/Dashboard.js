@@ -306,6 +306,7 @@ export default function App() {
     setPassword('');
     setProducts([]);
     setShowSettingsModal(false);
+    setActiveWorkspace('dashboard');
   };
 
   // --- SELEÇÃO DE OPERADOR E MODO SUPORTE ---
@@ -335,6 +336,7 @@ export default function App() {
       fetchProducts(selectedCompanyForOperators.company_id);
       setShowOperatorModal(false);
       setShowSettingsModal(false);
+      setActiveWorkspace('dashboard');
     } catch (err) {
       console.error("Erro ao iniciar suporte:", err);
     }
@@ -1509,16 +1511,16 @@ export default function App() {
         <nav className="flex-1 overflow-y-auto p-3 space-y-5">
           {[{title:'GESTÃO',items:[{id:'dashboard',label:'Dashboard',icon:LayoutDashboard},{id:'upload',label:'Upload Relatório',icon:Upload},{id:'settings',label:'Configurações',icon:Settings}]},{title:'MARGENS E CUSTOS',items:[{id:'intelligence',label:'Análise Inteligente',icon:TrendingUp},{id:'simulator',label:'Simular Margem',icon:Calculator}]}].map(group => <div key={group.title} className="space-y-1">
             <p aria-hidden={sidebarCollapsed} className={`text-[10px] font-bold tracking-widest text-gray-500 px-3 pb-2 whitespace-nowrap overflow-hidden transition-opacity duration-200 ${sidebarCollapsed ? "lg:opacity-0" : "opacity-100"}`}>{group.title}</p>
-            {group.items.map(item => <button key={item.id} title={item.label} onClick={() => { setSidebarOpen(false); if(item.id === 'settings'){fetchUsers();if(isSuperAdmin)fetchCompanies();setShowSettingsModal(true);} else if(item.id === 'upload'){document.getElementById('sunmaker-sidebar-upload')?.click();} else setActiveWorkspace(item.id); }} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-semibold transition-colors ${activeWorkspace === item.id ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25' : 'text-gray-300 hover:bg-neutral-800 hover:text-white'}`}><item.icon size={19} className="shrink-0"/><span aria-hidden={sidebarCollapsed} className={`whitespace-nowrap overflow-hidden transition-[opacity,max-width] duration-200 ${sidebarCollapsed ? "lg:opacity-0 lg:max-w-0" : "opacity-100 max-w-[180px]"}`}>{item.label}</span></button>)}
+            {group.items.map(item => <button key={item.id} title={item.label} onClick={() => { setSidebarOpen(false); if(item.id === 'settings'){fetchUsers();if(isSuperAdmin)fetchCompanies();setActiveWorkspace('settings');setShowSettingsModal(true);} else if(item.id === 'upload'){document.getElementById('sunmaker-sidebar-upload')?.click();} else setActiveWorkspace(item.id); }} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-semibold transition-colors ${activeWorkspace === item.id ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25' : 'text-gray-300 hover:bg-neutral-800 hover:text-white'}`}><item.icon size={19} className="shrink-0"/><span aria-hidden={sidebarCollapsed} className={`whitespace-nowrap overflow-hidden transition-[opacity,max-width] duration-200 ${sidebarCollapsed ? "lg:opacity-0 lg:max-w-0" : "opacity-100 max-w-[180px]"}`}>{item.label}</span></button>)}
           </div>)}
         </nav>
         <div className="p-3 border-t border-neutral-800"><button onClick={handleLogout} title="Sair" className="flex items-center gap-3 px-3 py-3 text-sm text-gray-300 hover:text-white hover:bg-neutral-800 rounded-lg w-full"><LogOut size={19}/><span aria-hidden={sidebarCollapsed} className={`whitespace-nowrap overflow-hidden transition-[opacity,max-width] duration-200 ${sidebarCollapsed ? "lg:opacity-0 lg:max-w-0" : "opacity-100 max-w-[180px]"}`}>Sair</span></button></div>
       </aside>
       <input id="sunmaker-sidebar-upload" type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading}/>
       <div className={`min-w-0 transition-[margin-left] duration-300 ease-in-out motion-reduce:transition-none ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
-        <header className="flex flex-wrap items-center gap-3 mb-6 border-b border-gray-800 pb-5 no-print min-w-0">
+        <header className={`flex flex-wrap items-center gap-3 mb-6 border-b border-gray-800 pb-5 no-print min-w-0 ${activeWorkspace === 'settings' ? 'hidden' : ''}`}>
           <button className="lg:hidden text-amber-400 p-2" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu"><Menu size={24}/></button>
-          <div className="min-w-0 flex-1"><h1 className="text-xl sm:text-2xl font-bold text-white">{activeWorkspace === 'dashboard' ? 'Dashboard de Inteligência' : activeWorkspace === 'intelligence' ? 'Análise Inteligente de Preços' : 'Simulador de Margens'}</h1><p className="text-xs text-gray-400">{isSuperAdmin && !impersonatedCompany ? 'Painel Master - Gestão de Plataforma' : 'Ambiente da empresa'}</p></div>
+          <div className="min-w-0 flex-1"><h1 className="text-xl sm:text-2xl font-bold text-white">{activeWorkspace === 'dashboard' ? 'Dashboard de Inteligência' : activeWorkspace === 'intelligence' ? 'Análise Inteligente de Preços' : activeWorkspace === 'settings' ? 'Configurações' : 'Simulador de Margens'}</h1><p className="text-xs text-gray-400">{isSuperAdmin && !impersonatedCompany ? 'Painel Master - Gestão de Plataforma' : 'Ambiente da empresa'}</p></div>
           {activeWorkspace === 'dashboard' && <div className="flex flex-wrap gap-2 w-full xl:w-auto"><div className="relative flex-1 min-w-[180px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"/><input placeholder="Pesquisar produto ou código..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setProductPage(1); }} className="w-full bg-neutral-900 border border-neutral-700 rounded-lg py-2 pl-9 pr-3 text-sm outline-none focus:border-amber-500"/></div><div className="relative flex-1 min-w-[150px]"><Filter size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"/><select value={selectedCategory} onChange={e => { setSelectedCategory(e.target.value); setProductPage(1); }} className="w-full bg-neutral-900 border border-neutral-700 rounded-lg py-2 pl-9 pr-3 text-sm"><option value="todas">Todas Categorias</option>{categoriesList.filter(c => c !== 'todas').map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div></div>}
           {uploading && <span className="text-xs text-amber-400">{uploadProgress || 'Importando relatório...'}</span>}
         </header>
@@ -1542,6 +1544,7 @@ export default function App() {
               onClick={() => { 
                 setActiveSettingsTab('empresas'); 
                 fetchCompanies(); 
+                setActiveWorkspace('settings');
                 setShowSettingsModal(true); 
               }}
               className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-5 py-2.5 rounded-lg text-xs transition-all cursor-pointer inline-flex items-center gap-2"
@@ -2022,14 +2025,14 @@ export default function App() {
       {/* MODAL CENTRAL DE CONFIGURAÇÕES */}
       <AnimatePresence>
         {showSettingsModal && (
-          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className={`min-w-0 transition-[margin-left] duration-300 ease-in-out motion-reduce:transition-none ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} ${activeWorkspace === 'settings' ? 'block' : 'hidden'}`}>
             <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col md:flex-row max-h-[88vh]"
+              initial={false}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full min-w-0 overflow-hidden shadow-xl flex flex-col md:flex-row min-h-[65vh]"
             >
-              <div className="w-full md:w-56 bg-neutral-950 p-4 border-b md:border-b-0 md:border-r border-neutral-800 flex flex-col justify-between">
+              <div className="w-full md:w-52 lg:w-56 shrink-0 bg-neutral-950 p-4 border-b md:border-b-0 md:border-r border-neutral-800 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-2 pb-4 mb-3 border-b border-neutral-800 text-white font-bold text-sm">
                     <Settings className="text-amber-500" size={18} />
@@ -2097,7 +2100,7 @@ export default function App() {
                       {activeSettingsTab === 'empresa' && "Informações da Empresa e Sessão"}
                       {activeSettingsTab === 'empresas' && "Gestão Central de Clientes e Empresas (B2B)"}
                     </h3>
-                    <button onClick={() => setShowSettingsModal(false)} className="text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer">
+                    <button onClick={() => { setShowSettingsModal(false); setActiveWorkspace('dashboard'); }} className="text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer">
                       <X size={18} />
                     </button>
                   </div>
@@ -2551,7 +2554,7 @@ export default function App() {
 
                 <div className="pt-4 border-t border-neutral-800 text-right mt-6">
                   <button 
-                    onClick={() => setShowSettingsModal(false)}
+                    onClick={() => { setShowSettingsModal(false); setActiveWorkspace('dashboard'); }}
                     className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
                   >
                     Fechar
