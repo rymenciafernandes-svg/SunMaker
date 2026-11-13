@@ -6,7 +6,7 @@ import {
   Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
   BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, Lock, Building2,
   Settings, Sliders, Printer, Camera, User, ToggleLeft, ToggleRight, ExternalLink,
-  ChevronRight, ShieldAlert
+  ChevronRight, ShieldAlert, Menu, LayoutDashboard, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -78,7 +78,9 @@ export default function App() {
   // Estados do Dashboard
   const [products, setProducts] = useState([]);
   const [showMarginSimulator, setShowMarginSimulator] = useState(false);
-  const [showPriceIntelligence, setShowPriceIntelligence] = useState(false);
+  const [activeWorkspace, setActiveWorkspace] = useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [period, setPeriod] = useState('meses');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
@@ -1444,7 +1446,7 @@ export default function App() {
   // DASHBOARD PRINCIPAL
   // ==========================================
   return (
-    <div className="p-8 max-w-7xl mx-auto font-sans text-white">
+    <div className="p-4 sm:p-6 lg:p-8 w-full min-h-screen font-sans text-white">
       {/* AVISO NA TELA DO OPERADOR QUANDO O ADMIN ESTIVER DENTRO */}
       {adminInsideNotification && (
         <motion.div 
@@ -1488,96 +1490,35 @@ export default function App() {
         </motion.div>
       )}
 
-      {showPriceIntelligence && <PriceIntelligence products={isSuperAdmin && !impersonatedCompany ? [] : products} onClose={() => setShowPriceIntelligence(false)} />}
-      {showMarginSimulator && <MarginSimulator products={isSuperAdmin && !impersonatedCompany ? [] : products} onClose={() => setShowMarginSimulator(false)} />}
 
-      {/* CABEÇALHO */}
-      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8 border-b border-gray-800 pb-6 no-print">
-        <div>
-          <motion.h1 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-4xl font-black tracking-tighter text-amber-500 flex items-center gap-2"
-          >
-            SunMaker
-          </motion.h1>
-          <p className="text-gray-400 mt-1 text-sm">
-            {isSuperAdmin && !impersonatedCompany ? "Painel Master - Gestão de Plataforma" : "Dashboard de Inteligência"}
-          </p>
+
+      {/* Navegação lateral. Mantém o mesmo componente e a sessão da empresa ativa. */}
+      {sidebarOpen && <button aria-label="Fechar menu" className="fixed inset-0 bg-black/70 z-[79] lg:hidden" onClick={() => setSidebarOpen(false)} />}
+      <aside className={`fixed inset-y-0 left-0 z-[80] bg-neutral-900 border-r border-neutral-800 flex flex-col transition-all duration-200 no-print ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'} w-64 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+        <div className="px-4 py-6 flex items-center justify-between gap-2 border-b border-neutral-800">
+          {!sidebarCollapsed && <div><div className="text-2xl font-black tracking-tight text-amber-500">SunMaker</div><div className="text-xs text-gray-400">Inteligência Comercial</div></div>}
+          <button className="hidden lg:block text-gray-400 hover:text-amber-400 p-2" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} aria-label="Recolher ou expandir menu">{sidebarCollapsed ? <PanelLeftOpen size={20}/> : <PanelLeftClose size={20}/>}</button>
+          <button className="lg:hidden p-2 text-gray-400" onClick={() => setSidebarOpen(false)} aria-label="Fechar menu"><X size={20}/></button>
         </div>
-        
-        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-          {/* Pesquisa */}
-          <div className="relative flex-1 sm:w-60">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-            <input 
-              type="text" 
-              placeholder="Pesquisar produto ou código..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-700 text-white pl-9 pr-3 py-2 rounded-lg text-sm outline-none focus:border-amber-500 transition-colors"
-            />
-          </div>
-
-          {/* Categorias */}
-          <div className="relative flex items-center">
-            <Filter className="absolute left-3 text-gray-500 pointer-events-none" size={15} />
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="bg-neutral-900 border border-neutral-700 text-white pl-8 pr-4 py-2 rounded-lg text-sm outline-none focus:border-amber-500 capitalize cursor-pointer max-w-[200px]"
-            >
-              <option value="todas">Todas Categorias</option>
-              {categoriesList.filter(c => c !== 'todas').map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Upload do Relatório */}
-          <label className="cursor-pointer bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium">
-            <Upload size={16} />
-            <span>{uploading && uploadProgress !== '' ? uploadProgress : "Upload Relatório"}</span>
-            <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading} />
-          </label>
-
-          <button onClick={() => setShowPriceIntelligence(true)} className="bg-neutral-900 hover:bg-neutral-800 border border-amber-500/40 text-amber-400 font-semibold px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm" title="Analisar preços dos produtos"><TrendingUp size={16}/> Análise Inteligente</button>
-          <button onClick={() => setShowMarginSimulator(true)} className="bg-neutral-900 hover:bg-neutral-800 border border-amber-500/40 text-amber-400 font-semibold px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm" title="Abrir simulador de margens"><Calculator size={16}/> Simular Margem</button>
-
-          {/* Botão Central de Configurações */}
-          <button 
-            onClick={() => { 
-              fetchUsers(); 
-              if (isSuperAdmin) fetchCompanies();
-              setShowSettingsModal(true); 
-            }}
-            className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm cursor-pointer"
-            title="Abrir Central de Configurações"
-          >
-            {currentUser?.avatar_url ? (
-              <img 
-                src={currentUser.avatar_url} 
-                alt="Avatar" 
-                className="w-5 h-5 rounded-full object-cover border border-amber-500/50"
-              />
-            ) : (
-              <Settings size={16} />
-            )}
-            Configurações
-          </button>
-
-          {/* Botão Sair */}
-          <button 
-            onClick={handleLogout}
-            className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all text-sm cursor-pointer"
-            title="Encerrar sessão"
-          >
-            <LogOut size={16} className="text-gray-400" />
-            Sair
-          </button>
-        </div>
-      </header>
-
+        <nav className="flex-1 overflow-y-auto p-3 space-y-5">
+          {[{title:'GESTÃO',items:[{id:'dashboard',label:'Dashboard',icon:LayoutDashboard},{id:'upload',label:'Upload Relatório',icon:Upload},{id:'settings',label:'Configurações',icon:Settings}]},{title:'MARGENS E CUSTOS',items:[{id:'intelligence',label:'Análise Inteligente',icon:TrendingUp},{id:'simulator',label:'Simular Margem',icon:Calculator}]}].map(group => <div key={group.title} className="space-y-1">
+            {!sidebarCollapsed && <p className="text-[10px] font-bold tracking-widest text-gray-500 px-3 pb-2">{group.title}</p>}
+            {group.items.map(item => <button key={item.id} title={item.label} onClick={() => { setSidebarOpen(false); if(item.id === 'settings'){fetchUsers();if(isSuperAdmin)fetchCompanies();setShowSettingsModal(true);} else if(item.id === 'upload'){document.getElementById('sunmaker-sidebar-upload')?.click();} else setActiveWorkspace(item.id); }} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-semibold transition-colors ${activeWorkspace === item.id ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25' : 'text-gray-300 hover:bg-neutral-800 hover:text-white'} ${sidebarCollapsed ? 'lg:justify-center' : ''}`}><item.icon size={19} className="shrink-0"/>{!sidebarCollapsed && <span>{item.label}</span>}</button>)}
+          </div>)}
+        </nav>
+        <div className="p-3 border-t border-neutral-800"><button onClick={handleLogout} title="Sair" className="flex items-center gap-3 px-3 py-3 text-sm text-gray-300 hover:text-white hover:bg-neutral-800 rounded-lg w-full"><LogOut size={19}/>{!sidebarCollapsed && 'Sair'}</button></div>
+      </aside>
+      <input id="sunmaker-sidebar-upload" type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading}/>
+      <div className={`transition-all duration-200 ${sidebarCollapsed ? 'lg:ml-12' : 'lg:ml-56'}`}>
+        <header className="flex flex-wrap items-center gap-3 mb-8 border-b border-gray-800 pb-5 no-print">
+          <button className="lg:hidden text-amber-400 p-2" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu"><Menu size={24}/></button>
+          <div className="min-w-0 flex-1"><h1 className="text-xl sm:text-2xl font-bold text-white">{activeWorkspace === 'dashboard' ? 'Dashboard de Inteligência' : activeWorkspace === 'intelligence' ? 'Análise Inteligente de Preços' : 'Simulador de Margens'}</h1><p className="text-xs text-gray-400">{isSuperAdmin && !impersonatedCompany ? 'Painel Master - Gestão de Plataforma' : 'Ambiente da empresa'}</p></div>
+          {activeWorkspace === 'dashboard' && <div className="flex flex-wrap gap-2 w-full xl:w-auto"><div className="relative flex-1 min-w-[180px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"/><input placeholder="Pesquisar produto ou código..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-lg py-2 pl-9 pr-3 text-sm outline-none focus:border-amber-500"/></div><div className="relative flex-1 min-w-[150px]"><Filter size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"/><select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-lg py-2 pl-9 pr-3 text-sm"><option value="todas">Todas Categorias</option>{categoriesList.filter(c => c !== 'todas').map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div></div>}
+          {uploading && <span className="text-xs text-amber-400">{uploadProgress || 'Importando relatório...'}</span>}
+        </header>
+        {activeWorkspace === 'intelligence' && <PriceIntelligence embedded products={isSuperAdmin && !impersonatedCompany ? [] : products} calculationMode={calculationMode} onClose={() => setActiveWorkspace('dashboard')}/>}
+        {activeWorkspace === 'simulator' && <MarginSimulator embedded products={isSuperAdmin && !impersonatedCompany ? [] : products} onClose={() => setActiveWorkspace('dashboard')}/>}
+        <div className={activeWorkspace === 'dashboard' ? '' : 'hidden'}>
       {/* TELA INFORMATIVA DO SUPER ADMIN QUANDO NÃO HÁ EMPRESA EM MODO SUPORTE */}
       {isSuperAdmin && !impersonatedCompany ? (
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 mb-8 text-center space-y-4 shadow-xl">
@@ -1939,6 +1880,9 @@ export default function App() {
           </motion.div>
         </>
       )}
+
+        </div>
+      </div>
 
       {/* MODAL DE SELEÇÃO DE OPERADOR / ESPELHO EM SUPORTE */}
       <AnimatePresence>
