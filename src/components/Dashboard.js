@@ -81,6 +81,7 @@ export default function App() {
   const [activeWorkspace, setActiveWorkspace] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [productPage, setProductPage] = useState(1);
   const [period, setPeriod] = useState('meses');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
@@ -1035,6 +1036,11 @@ export default function App() {
     return matchesSearch && matchesCategory;
   });
 
+  const pageSize = 40;
+  const totalProductPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
+  const safeProductPage = Math.min(productPage, totalProductPages);
+  const visibleProducts = filteredProducts.slice((safeProductPage - 1) * pageSize, safeProductPage * pageSize);
+
   const productsWithoutMargin = filteredProducts.filter(p => p.margin === null || p.margin === undefined || p.margin === 0);
 
   let totalStockUnits = 0;
@@ -1494,7 +1500,7 @@ export default function App() {
 
       {/* Navegação lateral. Mantém o mesmo componente e a sessão da empresa ativa. */}
       {sidebarOpen && <button aria-label="Fechar menu" className="fixed inset-0 bg-black/70 z-[79] lg:hidden" onClick={() => setSidebarOpen(false)} />}
-      <aside className={`fixed inset-y-0 left-0 z-[80] bg-neutral-900 border-r border-neutral-800 flex flex-col transition-all duration-200 no-print ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'} w-64 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+      <aside className={`fixed inset-y-0 left-0 z-[80] bg-neutral-900 border-r border-neutral-800 flex flex-col transition-[width,transform] duration-150 ease-out no-print ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'} w-64 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
         <div className="px-4 py-6 flex items-center justify-between gap-2 border-b border-neutral-800">
           {!sidebarCollapsed && <div><div className="text-2xl font-black tracking-tight text-amber-500">SunMaker</div><div className="text-xs text-gray-400">Inteligência Comercial</div></div>}
           <button className="hidden lg:block text-gray-400 hover:text-amber-400 p-2" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} aria-label="Recolher ou expandir menu">{sidebarCollapsed ? <PanelLeftOpen size={20}/> : <PanelLeftClose size={20}/>}</button>
@@ -1509,11 +1515,11 @@ export default function App() {
         <div className="p-3 border-t border-neutral-800"><button onClick={handleLogout} title="Sair" className="flex items-center gap-3 px-3 py-3 text-sm text-gray-300 hover:text-white hover:bg-neutral-800 rounded-lg w-full"><LogOut size={19}/>{!sidebarCollapsed && 'Sair'}</button></div>
       </aside>
       <input id="sunmaker-sidebar-upload" type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading}/>
-      <div className={`transition-all duration-200 ${sidebarCollapsed ? 'lg:ml-12' : 'lg:ml-56'}`}>
-        <header className="flex flex-wrap items-center gap-3 mb-8 border-b border-gray-800 pb-5 no-print">
+      <div className={`min-w-0 transition-[margin-left] duration-150 ease-out ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
+        <header className="flex flex-wrap items-center gap-3 mb-6 border-b border-gray-800 pb-5 no-print min-w-0">
           <button className="lg:hidden text-amber-400 p-2" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu"><Menu size={24}/></button>
           <div className="min-w-0 flex-1"><h1 className="text-xl sm:text-2xl font-bold text-white">{activeWorkspace === 'dashboard' ? 'Dashboard de Inteligência' : activeWorkspace === 'intelligence' ? 'Análise Inteligente de Preços' : 'Simulador de Margens'}</h1><p className="text-xs text-gray-400">{isSuperAdmin && !impersonatedCompany ? 'Painel Master - Gestão de Plataforma' : 'Ambiente da empresa'}</p></div>
-          {activeWorkspace === 'dashboard' && <div className="flex flex-wrap gap-2 w-full xl:w-auto"><div className="relative flex-1 min-w-[180px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"/><input placeholder="Pesquisar produto ou código..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-lg py-2 pl-9 pr-3 text-sm outline-none focus:border-amber-500"/></div><div className="relative flex-1 min-w-[150px]"><Filter size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"/><select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-lg py-2 pl-9 pr-3 text-sm"><option value="todas">Todas Categorias</option>{categoriesList.filter(c => c !== 'todas').map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div></div>}
+          {activeWorkspace === 'dashboard' && <div className="flex flex-wrap gap-2 w-full xl:w-auto"><div className="relative flex-1 min-w-[180px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"/><input placeholder="Pesquisar produto ou código..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setProductPage(1); }} className="w-full bg-neutral-900 border border-neutral-700 rounded-lg py-2 pl-9 pr-3 text-sm outline-none focus:border-amber-500"/></div><div className="relative flex-1 min-w-[150px]"><Filter size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"/><select value={selectedCategory} onChange={e => { setSelectedCategory(e.target.value); setProductPage(1); }} className="w-full bg-neutral-900 border border-neutral-700 rounded-lg py-2 pl-9 pr-3 text-sm"><option value="todas">Todas Categorias</option>{categoriesList.filter(c => c !== 'todas').map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div></div>}
           {uploading && <span className="text-xs text-amber-400">{uploadProgress || 'Importando relatório...'}</span>}
         </header>
         {activeWorkspace === 'intelligence' && <PriceIntelligence embedded products={isSuperAdmin && !impersonatedCompany ? [] : products} calculationMode={calculationMode} onClose={() => setActiveWorkspace('dashboard')}/>}
@@ -1670,7 +1676,7 @@ export default function App() {
                       </td>
                     </tr>
                   ) : (
-                    filteredProducts.map(product => {
+                    visibleProducts.map(product => {
                       const isEditing = editingId === product.id;
                       const stockQty = Number(product.stock) || 0;
                       const cost = Number(product.cost) || 0;
@@ -1877,6 +1883,16 @@ export default function App() {
                 </tbody>
               </table>
             </div>
+            {filteredProducts.length > pageSize && (
+              <div className="no-print flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-neutral-800 text-xs text-gray-400">
+                <span>Exibindo {(safeProductPage - 1) * pageSize + 1}–{Math.min(safeProductPage * pageSize, filteredProducts.length)} de {filteredProducts.length} produtos</span>
+                <div className="flex items-center gap-3">
+                  <button type="button" disabled={safeProductPage === 1} onClick={() => setProductPage(safeProductPage - 1)} className="px-3 py-2 rounded-lg border border-neutral-700 disabled:opacity-30 hover:bg-neutral-800">Anterior</button>
+                  <span>Página {safeProductPage} de {totalProductPages}</span>
+                  <button type="button" disabled={safeProductPage === totalProductPages} onClick={() => setProductPage(safeProductPage + 1)} className="px-3 py-2 rounded-lg border border-neutral-700 disabled:opacity-30 hover:bg-neutral-800">Próxima</button>
+                </div>
+              </div>
+            )}
           </motion.div>
         </>
       )}
