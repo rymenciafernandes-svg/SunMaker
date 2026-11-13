@@ -7,7 +7,7 @@ const number = (value) => {
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 };
 
-export default function MarginSimulator({ products = [], onClose }) {
+export default function MarginSimulator({ products = [], onClose, embedded = false }) {
   const [mode, setMode] = useState('novo');
   const [selectedId, setSelectedId] = useState('');
   const [name, setName] = useState('');
@@ -38,7 +38,7 @@ export default function MarginSimulator({ products = [], onClose }) {
   const fieldClass = 'w-full bg-black border border-neutral-700 rounded-lg px-3 py-2 text-white outline-none focus:border-amber-500';
   return (
     <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 no-print" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-label="Simulador de Margens" className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-neutral-900 border border-neutral-700 rounded-2xl p-5 sm:p-7 shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label="Simulador de Margens" className={embedded ? "w-full bg-neutral-900 border border-neutral-700 rounded-2xl p-5 sm:p-7 shadow-2xl" : "w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-neutral-900 border border-neutral-700 rounded-2xl p-5 sm:p-7 shadow-2xl"}>
         <div className="flex items-center justify-between gap-3 mb-5"><h2 className="text-xl font-bold flex items-center gap-2"><Calculator className="text-amber-500"/> Simulador de Margens</h2><button onClick={onClose} aria-label="Fechar simulador" className="p-2 hover:bg-neutral-800 rounded-lg"><X size={20}/></button></div>
         <p className="text-xs text-gray-400 mb-5">Simulação independente: nenhum dado será gravado ou alterado no Supabase. Margem calculada sobre o preço de venda.</p>
         <div className="flex gap-2 mb-5"><button onClick={() => { setMode('novo'); reset(); }} className={`px-3 py-2 rounded-lg text-sm font-semibold ${mode === 'novo' ? 'bg-amber-500 text-black' : 'bg-neutral-800 text-gray-300'}`}>Produto novo</button><button onClick={() => { setMode('cadastrado'); reset(); }} className={`px-3 py-2 rounded-lg text-sm font-semibold ${mode === 'cadastrado' ? 'bg-amber-500 text-black' : 'bg-neutral-800 text-gray-300'}`}>Produto cadastrado</button></div>
