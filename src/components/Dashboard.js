@@ -6,7 +6,8 @@ import {
   Eye, EyeOff, HelpCircle, Info, FileText, LogOut, Users, UserPlus, Shield, Key,
   BookOpen, Calculator, FileSpreadsheet, PhoneCall, Scale, Lock, Building2,
   Settings, Sliders, Printer, Camera, User, ToggleLeft, ToggleRight, ExternalLink,
-  ChevronRight, ShieldAlert, Menu, LayoutDashboard, PanelLeftClose, PanelLeftOpen
+  ChevronRight, ShieldAlert, Menu, LayoutDashboard, PanelLeftClose, PanelLeftOpen,
+  BarChart3, Bell, History, GitCompare
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
@@ -14,6 +15,13 @@ import SupportChat from './SupportChat';
 import LiveCursor from './LiveCursor';
 import MarginSimulator from './MarginSimulator';
 import PriceIntelligence from './PriceIntelligence';
+import ReportsView from './commercial/ReportsView';
+import AlertsView from './commercial/AlertsView';
+import PriceHistoryView from './commercial/PriceHistoryView';
+import ProductCompareView from './commercial/ProductCompareView';
+import BulkRepriceView from './commercial/BulkRepriceView';
+import { calculateProduct } from '@/lib/commerce';
+import { recordLocalPriceChange } from '@/lib/localPriceHistory';
 
 const LOGIN_BG_IMAGE = "https://images.unsplash.com/photo-1545459720-aac8509eb02c?q=80&w=1920&auto=format&fit=crop"; 
 
@@ -615,6 +623,20 @@ export default function App() {
     fetchUsers();
   };
 
+  const noteLocalChange = (previous, next, action, notes = '') => {
+    if (!effectiveCompanyId || !previous || !next) return;
+    const oldValue = calculateProduct(previous, calculationMode);
+    const newValue = calculateProduct(next, calculationMode);
+    const changed = oldValue.cost !== newValue.cost || oldValue.rawMargin !== newValue.rawMargin || oldValue.price !== newValue.price;
+    if (!changed) return;
+    recordLocalPriceChange(effectiveCompanyId, {
+      action, notes, name: previous.name, productId: String(previous.id),
+      actor: currentUser?.username || 'Usuário',
+      beforePrice: oldValue.price, afterPrice: newValue.price,
+      beforeMargin: oldValue.marginPct, afterMargin: newValue.marginPct
+    });
+  };
+
   const handleSetPrice = async (id, priceValue) => {
     const targetCompany = effectiveCompanyId;
     const rawPrice = String(priceValue).replace('R$', '').replace(/\s/g, '').replace(',', '.');
@@ -638,10 +660,13 @@ export default function App() {
     setProducts(products.map(p => p.id === id ? { ...p, margin, is_new: false } : p));
 
     if (typeof id === 'string' && !id.startsWith('local-')) {
-      await supabase
+      const { error } = await supabase
         .from('products')
         .update({ margin, is_new: false })
         .eq('id', id);
+      if (!error) noteLocalChange(product, { ...product, margin }, 'Preço definido');
+    } else {
+      noteLocalChange(product, { ...product, margin }, 'Preço definido (local)');
     }
   };
 
@@ -649,27 +674,32 @@ export default function App() {
     const targetCompany = effectiveCompanyId;
     const margin = parseFloat(marginValue);
     if (isNaN(margin) || !targetCompany) return;
-    
+    const previous = products.find(p => p.id === id);
     setProducts(products.map(p => p.id === id ? { ...p, margin, is_new: false } : p));
     
     if (typeof id === 'string' && !id.startsWith('local-')) {
-      await supabase
+      const { error } = await supabase
         .from('products')
         .update({ margin, is_new: false })
         .eq('id', id);
+      if (!error) noteLocalChange(previous, { ...previous, margin }, 'Margem alterada');
+    } else {
+      noteLocalChange(previous, { ...previous, margin }, 'Margem alterada (local)');
     }
   };
 
   const handleRemoveMargin = async (id) => {
     const targetCompany = effectiveCompanyId;
     if (!targetCompany) return;
+    const previous = products.find(p => p.id === id);
     setProducts(products.map(p => p.id === id ? { ...p, margin: null } : p));
     if (typeof id === 'string' && !id.startsWith('local-')) {
-      await supabase
+      const { error } = await supabase
         .from('products')
         .update({ margin: null })
         .eq('id', id);
-    }
+      if (!error) noteLocalChange(previous, { ...previous, margin: null }, 'Margem removida');
+    } else noteLocalChange(previous, { ...previous, margin: null }, 'Margem removida (local)');
   };
 
   const handleDeleteProduct = async (id) => {
@@ -747,12 +777,19 @@ export default function App() {
       
       for (let i = 0; i < idsToUpdate.length; i += 200) {
         const batchIds = idsToUpdate.slice(i, i + 200);
-        await supabase
+        const { error } = await supabase
           .from('products')
           .update({ margin, is_new: false })
           .in('id', batchIds);
+        if (error) throw error;
       }
 
+      recordLocalPriceChange(targetCompany, {
+        actor: currentUser?.username || 'Usuário', action: 'Alteração global de margem',
+        name: `${products.length} produtos`, beforePrice: null, afterPrice: null,
+        beforeMargin: null, afterMargin: null,
+        notes: `Margem cadastrada de ${margin}% aplicada pela função existente de Configurações.`
+      });
       alert(`Margem de ${margin}% aplicada com sucesso em todos os ${products.length} produtos.`);
     } catch (err) {
       console.error("Erro ao aplicar margem global:", err);
@@ -835,6 +872,7 @@ export default function App() {
   const saveEditing = async (id) => {
     const targetCompany = effectiveCompanyId;
     if (!targetCompany) return;
+    const previous = products.find(p => p.id === id);
     const updatedCost = parseFloat(editForm.cost) || 0;
     const updatedStock = parseFloat(editForm.stock) || 0;
     const updatedMargin = editForm.margin === '' ? null : parseFloat(editForm.margin);
@@ -851,8 +889,9 @@ export default function App() {
 
     setEditingId(null);
 
+    const next = { ...previous, cost: updatedCost, margin: updatedMargin };
     if (typeof id === 'string' && !id.startsWith('local-')) {
-      await supabase
+      const { error } = await supabase
         .from('products')
         .update({ 
           name: editForm.name, 
@@ -863,7 +902,8 @@ export default function App() {
           is_new: false
         })
         .eq('id', id);
-    }
+      if (!error) noteLocalChange(previous, next, 'Produto editado');
+    } else noteLocalChange(previous, next, 'Produto editado (local)');
   };
 
   const handleFileUpload = (e) => {
@@ -1509,7 +1549,7 @@ export default function App() {
           <button className="lg:hidden p-2 text-gray-400" onClick={() => setSidebarOpen(false)} aria-label="Fechar menu"><X size={20}/></button>
         </div>
         <nav className="flex-1 overflow-y-auto p-3 space-y-5">
-          {[{title:'GESTÃO',items:[{id:'dashboard',label:'Dashboard',icon:LayoutDashboard},{id:'upload',label:'Upload Relatório',icon:Upload},{id:'settings',label:'Configurações',icon:Settings}]},{title:'MARGENS E CUSTOS',items:[{id:'intelligence',label:'Análise Inteligente',icon:TrendingUp},{id:'simulator',label:'Simular Margem',icon:Calculator}]}].map(group => <div key={group.title} className="space-y-1">
+          {[{title:'GESTÃO',items:[{id:'dashboard',label:'Dashboard',icon:LayoutDashboard},{id:'upload',label:'Upload Relatório',icon:Upload},{id:'reports',label:'Relatórios Gerenciais',icon:BarChart3},{id:'alerts',label:'Central de Alertas',icon:Bell},{id:'settings',label:'Configurações',icon:Settings}]},{title:'MARGENS E CUSTOS',items:[{id:'intelligence',label:'Análise Inteligente',icon:TrendingUp},{id:'simulator',label:'Simular Margem',icon:Calculator},{id:'compare',label:'Comparador de Produtos',icon:GitCompare},{id:'history',label:'Histórico de Preços',icon:History},{id:'bulk',label:'Reajuste em Massa',icon:Sliders}]}].map(group => <div key={group.title} className="space-y-1">
             <p aria-hidden={sidebarCollapsed} className={`text-[10px] font-bold tracking-widest text-gray-500 px-3 pb-2 whitespace-nowrap overflow-hidden transition-opacity duration-200 ${sidebarCollapsed ? "lg:opacity-0" : "opacity-100"}`}>{group.title}</p>
             {group.items.map(item => <button key={item.id} title={item.label} onClick={() => { setSidebarOpen(false); if(item.id === 'settings'){fetchUsers();if(isSuperAdmin)fetchCompanies();setActiveWorkspace('settings');setShowSettingsModal(true);} else if(item.id === 'upload'){document.getElementById('sunmaker-sidebar-upload')?.click();} else setActiveWorkspace(item.id); }} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-semibold transition-colors ${activeWorkspace === item.id ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25' : 'text-gray-300 hover:bg-neutral-800 hover:text-white'}`}><item.icon size={19} className="shrink-0"/><span aria-hidden={sidebarCollapsed} className={`whitespace-nowrap overflow-hidden transition-[opacity,max-width] duration-200 ${sidebarCollapsed ? "lg:opacity-0 lg:max-w-0" : "opacity-100 max-w-[180px]"}`}>{item.label}</span></button>)}
           </div>)}
@@ -1520,12 +1560,17 @@ export default function App() {
       <div className={`min-w-0 transition-[margin-left] duration-300 ease-in-out motion-reduce:transition-none ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
         <header className={`flex flex-wrap items-center gap-3 mb-6 border-b border-gray-800 pb-5 no-print min-w-0 ${activeWorkspace === 'settings' ? 'hidden' : ''}`}>
           <button className="lg:hidden text-amber-400 p-2" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu"><Menu size={24}/></button>
-          <div className="min-w-0 flex-1"><h1 className="text-xl sm:text-2xl font-bold text-white">{activeWorkspace === 'dashboard' ? 'Dashboard de Inteligência' : activeWorkspace === 'intelligence' ? 'Análise Inteligente de Preços' : activeWorkspace === 'settings' ? 'Configurações' : 'Simulador de Margens'}</h1><p className="text-xs text-gray-400">{isSuperAdmin && !impersonatedCompany ? 'Painel Master - Gestão de Plataforma' : 'Ambiente da empresa'}</p></div>
+          <div className="min-w-0 flex-1"><h1 className="text-xl sm:text-2xl font-bold text-white">{({dashboard:'Dashboard de Inteligência',intelligence:'Análise Inteligente de Preços',settings:'Configurações',simulator:'Simulador de Margens',reports:'Relatórios Gerenciais',alerts:'Central de Alertas',compare:'Comparador de Produtos',history:'Histórico de Preços',bulk:'Simulador de Reajuste em Massa'})[activeWorkspace] || 'SunMaker'}</h1><p className="text-xs text-gray-400">{isSuperAdmin && !impersonatedCompany ? 'Painel Master - Gestão de Plataforma' : 'Ambiente da empresa'}</p></div>
           {activeWorkspace === 'dashboard' && <div className="flex flex-wrap gap-2 w-full xl:w-auto"><div className="relative flex-1 min-w-[180px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"/><input placeholder="Pesquisar produto ou código..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setProductPage(1); }} className="w-full bg-neutral-900 border border-neutral-700 rounded-lg py-2 pl-9 pr-3 text-sm outline-none focus:border-amber-500"/></div><div className="relative flex-1 min-w-[150px]"><Filter size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"/><select value={selectedCategory} onChange={e => { setSelectedCategory(e.target.value); setProductPage(1); }} className="w-full bg-neutral-900 border border-neutral-700 rounded-lg py-2 pl-9 pr-3 text-sm"><option value="todas">Todas Categorias</option>{categoriesList.filter(c => c !== 'todas').map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div></div>}
           {uploading && <span className="text-xs text-amber-400">{uploadProgress || 'Importando relatório...'}</span>}
         </header>
         {activeWorkspace === 'intelligence' && <PriceIntelligence embedded products={isSuperAdmin && !impersonatedCompany ? [] : products} calculationMode={calculationMode} onClose={() => setActiveWorkspace('dashboard')}/>}
         {activeWorkspace === 'simulator' && <MarginSimulator embedded products={isSuperAdmin && !impersonatedCompany ? [] : products} onClose={() => setActiveWorkspace('dashboard')}/>}
+        {activeWorkspace === 'reports' && <ReportsView products={isSuperAdmin && !impersonatedCompany ? [] : products} calculationMode={calculationMode}/>}
+        {activeWorkspace === 'alerts' && <AlertsView products={isSuperAdmin && !impersonatedCompany ? [] : products} calculationMode={calculationMode}/>}
+        {activeWorkspace === 'compare' && <ProductCompareView products={isSuperAdmin && !impersonatedCompany ? [] : products} calculationMode={calculationMode}/>}
+        {activeWorkspace === 'history' && <PriceHistoryView companyId={isSuperAdmin && !impersonatedCompany ? null : effectiveCompanyId} companyName={impersonatedCompany?.company_name || effectiveCompanyId}/>}
+        {activeWorkspace === 'bulk' && <BulkRepriceView products={isSuperAdmin && !impersonatedCompany ? [] : products} calculationMode={calculationMode}/>}
         <div className={activeWorkspace === 'dashboard' ? '' : 'hidden'}>
       {/* TELA INFORMATIVA DO SUPER ADMIN QUANDO NÃO HÁ EMPRESA EM MODO SUPORTE */}
       {isSuperAdmin && !impersonatedCompany ? (
