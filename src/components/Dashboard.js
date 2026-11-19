@@ -1540,21 +1540,129 @@ export default function App() {
 
 
 
-      {/* Navegação lateral. Mantém o mesmo componente e a sessão da empresa ativa. */}
-      {sidebarOpen && <button aria-label="Fechar menu" className="fixed inset-0 bg-black/70 z-[79] lg:hidden" onClick={() => setSidebarOpen(false)} />}
-      <aside className={`fixed inset-y-0 left-0 z-[80] bg-neutral-900 border-r border-neutral-800 flex flex-col transition-[width,transform] duration-300 ease-in-out motion-reduce:transition-none overflow-hidden no-print ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'} w-64 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
-        <div className="px-4 py-6 flex items-center justify-between gap-2 border-b border-neutral-800">
-          <div aria-hidden={sidebarCollapsed} className={`min-w-0 overflow-hidden whitespace-nowrap transition-[opacity,max-width] duration-200 ease-in-out ${sidebarCollapsed ? "lg:opacity-0 lg:max-w-0" : "opacity-100 max-w-[190px]"}`}><div className="text-2xl font-black tracking-tight text-amber-500">SunMaker</div><div className="text-xs text-gray-400">Inteligência Comercial</div></div>
-          <button className="hidden lg:block text-gray-400 hover:text-amber-400 p-2" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} aria-label="Recolher ou expandir menu">{sidebarCollapsed ? <PanelLeftOpen size={20}/> : <PanelLeftClose size={20}/>}</button>
-          <button className="lg:hidden p-2 text-gray-400" onClick={() => setSidebarOpen(false)} aria-label="Fechar menu"><X size={20}/></button>
+      {/* Navegação lateral: no modo compacto, ícones centralizados e marca visível.
+          A navegação permanece rolável, mas sem uma barra visual sobre os ícones. */}
+      {sidebarOpen && (
+        <button
+          aria-label="Fechar menu"
+          className="fixed inset-0 bg-black/70 z-[79] lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      <aside
+        aria-label="Menu lateral SunMaker"
+        className={`fixed inset-y-0 left-0 z-[80] bg-neutral-900 border-r border-neutral-800 flex flex-col transition-[width,transform] duration-300 ease-in-out motion-reduce:transition-none overflow-hidden no-print ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'} w-64 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}
+      >
+        {/* Altura fixa impede que os itens "pulem" ao recolher o menu. */}
+        <div className={`h-24 shrink-0 flex items-center justify-between border-b border-neutral-800 px-4 gap-2 ${sidebarCollapsed ? 'lg:px-2 lg:gap-1' : ''}`}>
+          <div className={`flex items-center min-w-0 ${sidebarCollapsed ? 'lg:gap-0' : 'gap-2'}`}>
+            {sidebarCollapsed && (
+              <span
+                aria-hidden="true"
+                className="hidden lg:flex shrink-0 h-7 w-7 items-center justify-center rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-400 text-lg font-black"
+              >
+                S
+              </span>
+            )}
+            <div className={`min-w-0 whitespace-nowrap overflow-hidden transition-[opacity,max-width] duration-200 ease-in-out ${sidebarCollapsed ? 'lg:opacity-0 lg:max-w-0 lg:pointer-events-none' : 'opacity-100 max-w-[190px]'}`}>
+              <div className="text-2xl font-black tracking-tight text-amber-500">SunMaker</div>
+              <div className="text-xs text-gray-400">Inteligência Comercial</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="hidden lg:flex shrink-0 h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:bg-neutral-800 hover:text-amber-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            onClick={() => setSidebarCollapsed(value => !value)}
+            aria-label={sidebarCollapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+            aria-expanded={!sidebarCollapsed}
+            title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={19}/> : <PanelLeftClose size={19}/>}
+          </button>
+          <button
+            type="button"
+            className="lg:hidden h-8 w-8 inline-flex items-center justify-center rounded-md text-gray-400 hover:text-white"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Fechar menu"
+          >
+            <X size={20}/>
+          </button>
         </div>
-        <nav className="flex-1 overflow-y-auto p-3 space-y-5">
-          {[{title:'GESTÃO',items:[{id:'dashboard',label:'Dashboard',icon:LayoutDashboard},{id:'upload',label:'Upload Relatório',icon:Upload},{id:'reports',label:'Relatórios Gerenciais',icon:BarChart3},{id:'alerts',label:'Central de Alertas',icon:Bell},{id:'settings',label:'Configurações',icon:Settings}]},{title:'MARGENS E CUSTOS',items:[{id:'intelligence',label:'Análise Inteligente',icon:TrendingUp},{id:'simulator',label:'Simular Margem',icon:Calculator},{id:'compare',label:'Comparador de Produtos',icon:GitCompare},{id:'history',label:'Histórico de Preços',icon:History},{id:'bulk',label:'Reajuste em Massa',icon:Sliders}]}].map(group => <div key={group.title} className="space-y-1">
-            <p aria-hidden={sidebarCollapsed} className={`text-[10px] font-bold tracking-widest text-gray-500 px-3 pb-2 whitespace-nowrap overflow-hidden transition-opacity duration-200 ${sidebarCollapsed ? "lg:opacity-0" : "opacity-100"}`}>{group.title}</p>
-            {group.items.map(item => <button key={item.id} title={item.label} onClick={() => { setSidebarOpen(false); if(item.id === 'settings'){fetchUsers();if(isSuperAdmin)fetchCompanies();setActiveWorkspace('settings');setShowSettingsModal(true);} else if(item.id === 'upload'){document.getElementById('sunmaker-sidebar-upload')?.click();} else setActiveWorkspace(item.id); }} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-semibold transition-colors ${activeWorkspace === item.id ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25' : 'text-gray-300 hover:bg-neutral-800 hover:text-white'}`}><item.icon size={19} className="shrink-0"/><span aria-hidden={sidebarCollapsed} className={`whitespace-nowrap overflow-hidden transition-[opacity,max-width] duration-200 ${sidebarCollapsed ? "lg:opacity-0 lg:max-w-0" : "opacity-100 max-w-[180px]"}`}>{item.label}</span></button>)}
-          </div>)}
+
+        <nav
+          aria-label="Navegação principal"
+          className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain px-3 py-4 space-y-5 [&::-webkit-scrollbar]:hidden"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {[
+            {title: 'GESTÃO', items: [
+              {id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard},
+              {id: 'upload', label: 'Upload Relatório', icon: Upload},
+              {id: 'reports', label: 'Relatórios Gerenciais', icon: BarChart3},
+              {id: 'alerts', label: 'Central de Alertas', icon: Bell},
+              {id: 'settings', label: 'Configurações', icon: Settings},
+            ]},
+            {title: 'MARGENS E CUSTOS', items: [
+              {id: 'intelligence', label: 'Análise Inteligente', icon: TrendingUp},
+              {id: 'simulator', label: 'Simular Margem', icon: Calculator},
+              {id: 'compare', label: 'Comparador de Produtos', icon: GitCompare},
+              {id: 'history', label: 'Histórico de Preços', icon: History},
+              {id: 'bulk', label: 'Reajuste em Massa', icon: Sliders},
+            ]},
+          ].map(group => (
+            <div key={group.title} className="space-y-1">
+              <div className="h-7 px-3 flex items-center overflow-hidden">
+                <span className={`block whitespace-nowrap text-[10px] font-bold tracking-widest text-gray-500 transition-[opacity,max-width] duration-200 ${sidebarCollapsed ? 'lg:opacity-0 lg:max-w-0' : 'opacity-100 max-w-[180px]'}`}>
+                  {group.title}
+                </span>
+                {sidebarCollapsed && <span aria-hidden="true" className="hidden lg:block h-px w-full bg-neutral-700/80"/>}
+              </div>
+              {group.items.map(item => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-label={item.label}
+                  aria-current={activeWorkspace === item.id ? 'page' : undefined}
+                  title={sidebarCollapsed ? item.label : undefined}
+                  onClick={() => {
+                    setSidebarOpen(false);
+                    if (item.id === 'settings') {
+                      fetchUsers();
+                      if (isSuperAdmin) fetchCompanies();
+                      setActiveWorkspace('settings');
+                      setShowSettingsModal(true);
+                    } else if (item.id === 'upload') {
+                      document.getElementById('sunmaker-sidebar-upload')?.click();
+                    } else {
+                      setActiveWorkspace(item.id);
+                    }
+                  }}
+                  className={`w-full h-11 flex items-center gap-3 px-3 rounded-lg text-sm font-semibold transition-[background-color,color,border-color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${sidebarCollapsed ? 'lg:justify-center lg:gap-0 lg:px-0' : ''} ${activeWorkspace === item.id ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25' : 'text-gray-300 hover:bg-neutral-800 hover:text-white border border-transparent'}`}
+                >
+                  <item.icon size={19} aria-hidden="true" className="shrink-0"/>
+                  <span className={`min-w-0 whitespace-nowrap overflow-hidden transition-[opacity,max-width] duration-200 ease-in-out ${sidebarCollapsed ? 'lg:opacity-0 lg:max-w-0 lg:pointer-events-none' : 'opacity-100 max-w-[180px]'}`}>
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ))}
         </nav>
-        <div className="p-3 border-t border-neutral-800"><button onClick={handleLogout} title="Sair" className="flex items-center gap-3 px-3 py-3 text-sm text-gray-300 hover:text-white hover:bg-neutral-800 rounded-lg w-full"><LogOut size={19}/><span aria-hidden={sidebarCollapsed} className={`whitespace-nowrap overflow-hidden transition-[opacity,max-width] duration-200 ${sidebarCollapsed ? "lg:opacity-0 lg:max-w-0" : "opacity-100 max-w-[180px]"}`}>Sair</span></button></div>
+
+        <div className="shrink-0 p-3 border-t border-neutral-800">
+          <button
+            type="button"
+            onClick={handleLogout}
+            aria-label="Sair"
+            title={sidebarCollapsed ? 'Sair' : undefined}
+            className={`w-full h-11 flex items-center gap-3 px-3 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-neutral-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${sidebarCollapsed ? 'lg:justify-center lg:gap-0 lg:px-0' : ''}`}
+          >
+            <LogOut size={19} aria-hidden="true" className="shrink-0"/>
+            <span className={`min-w-0 whitespace-nowrap overflow-hidden transition-[opacity,max-width] duration-200 ${sidebarCollapsed ? 'lg:opacity-0 lg:max-w-0 lg:pointer-events-none' : 'opacity-100 max-w-[180px]'}`}>
+              Sair
+            </span>
+          </button>
+        </div>
       </aside>
       <input id="sunmaker-sidebar-upload" type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={uploading}/>
       <div className={`min-w-0 transition-[margin-left] duration-300 ease-in-out motion-reduce:transition-none ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
