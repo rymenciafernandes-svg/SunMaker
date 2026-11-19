@@ -21,6 +21,7 @@ import PriceHistoryView from './commercial/PriceHistoryView';
 import ProductCompareView from './commercial/ProductCompareView';
 import BulkRepriceView from './commercial/BulkRepriceView';
 import PlanningViews from './commercial/PlanningViews';
+import FinancialPlanningViews from './commercial/FinancialPlanningViews';
 import { saveSnapshot, snapshot } from '@/lib/planning';
 import { calculateProduct } from '@/lib/commerce';
 import { recordLocalPriceChange } from '@/lib/localPriceHistory';
@@ -1633,6 +1634,8 @@ export default function App() {
               {id: 'reportcompare', label: 'Comparar Relatórios', icon: FileSpreadsheet},
               {id: 'matrix', label: 'Matriz de Rentabilidade', icon: LayoutDashboard},
               {id: 'actions', label: 'Plano de Ação', icon: Check},
+              {id: 'breakeven', label: 'Ponto de Equilíbrio', icon: Calculator},
+              {id: 'scenarios', label: 'Projeção de Cenários', icon: TrendingUp},
             ]},
           ].map(group => (
             <div key={group.title} className="space-y-1">
@@ -1693,11 +1696,12 @@ export default function App() {
       <div className={`min-w-0 transition-[margin-left] duration-300 ease-in-out motion-reduce:transition-none ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
         <header className={`flex flex-wrap items-center gap-3 mb-6 border-b border-gray-800 pb-5 no-print min-w-0 ${activeWorkspace === 'settings' ? 'hidden' : ''}`}>
           <button className="lg:hidden text-amber-400 p-2" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu"><Menu size={24}/></button>
-          <div className="min-w-0 flex-1"><h1 className="text-xl sm:text-2xl font-bold text-white">{({dashboard:'Dashboard de Inteligência',intelligence:'Análise Inteligente de Preços',settings:'Configurações',simulator:'Simulador de Margens',reports:'Relatórios Gerenciais',alerts:'Central de Alertas',compare:'Comparador de Produtos',history:'Histórico de Preços',bulk:'Simulador de Reajuste em Massa',fullprice:'Calculadora de Preço Completo',abc:'Curva ABC',purchases:'Planejamento de Compras',goals:'Metas de Rentabilidade',reportcompare:'Comparativo entre Relatórios',matrix:'Matriz de Rentabilidade',actions:'Plano de Ação Comercial'})[activeWorkspace] || 'SunMaker'}</h1><p className="text-xs text-gray-400">{isSuperAdmin && !impersonatedCompany ? 'Painel Master - Gestão de Plataforma' : 'Ambiente da empresa'}</p></div>
+          <div className="min-w-0 flex-1"><h1 className="text-xl sm:text-2xl font-bold text-white">{({dashboard:'Dashboard de Inteligência',intelligence:'Análise Inteligente de Preços',settings:'Configurações',simulator:'Simulador de Margens',reports:'Relatórios Gerenciais',alerts:'Central de Alertas',compare:'Comparador de Produtos',history:'Histórico de Preços',bulk:'Simulador de Reajuste em Massa',fullprice:'Calculadora de Preço Completo',abc:'Curva ABC',purchases:'Planejamento de Compras',goals:'Metas de Rentabilidade',reportcompare:'Comparativo entre Relatórios',matrix:'Matriz de Rentabilidade',actions:'Plano de Ação Comercial',breakeven:'Ponto de Equilíbrio',scenarios:'Projeção de Cenários'})[activeWorkspace] || 'SunMaker'}</h1><p className="text-xs text-gray-400">{isSuperAdmin && !impersonatedCompany ? 'Painel Master - Gestão de Plataforma' : 'Ambiente da empresa'}</p></div>
           {activeWorkspace === 'dashboard' && <div className="flex flex-wrap gap-2 w-full xl:w-auto"><div className="relative flex-1 min-w-[180px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"/><input placeholder="Pesquisar produto ou código..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setProductPage(1); }} className="w-full bg-neutral-900 border border-neutral-700 rounded-lg py-2 pl-9 pr-3 text-sm outline-none focus:border-amber-500"/></div><div className="relative flex-1 min-w-[150px]"><Filter size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"/><select value={selectedCategory} onChange={e => { setSelectedCategory(e.target.value); setProductPage(1); }} className="w-full bg-neutral-900 border border-neutral-700 rounded-lg py-2 pl-9 pr-3 text-sm"><option value="todas">Todas Categorias</option>{categoriesList.filter(c => c !== 'todas').map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div></div>}
           {uploading && <span className="text-xs text-amber-400">{uploadProgress || 'Importando relatório...'}</span>}
         </header>
         {activeWorkspace === 'intelligence' && <PriceIntelligence embedded products={isSuperAdmin && !impersonatedCompany ? [] : products} calculationMode={calculationMode} onClose={() => setActiveWorkspace('dashboard')}/>}
+        {['breakeven','scenarios'].includes(activeWorkspace) && <FinancialPlanningViews key={activeWorkspace} view={activeWorkspace}/>}
         {activeWorkspace === 'simulator' && <MarginSimulator embedded products={isSuperAdmin && !impersonatedCompany ? [] : products} onClose={() => setActiveWorkspace('dashboard')}/>}
         {activeWorkspace === 'reports' && <ReportsView products={isSuperAdmin && !impersonatedCompany ? [] : products} calculationMode={calculationMode}/>}
         {activeWorkspace === 'alerts' && <AlertsView products={isSuperAdmin && !impersonatedCompany ? [] : products} calculationMode={calculationMode}/>}
